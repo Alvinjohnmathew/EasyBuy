@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EasyBuy - Online Shopping Site for Gadgets, Fashion, Watch, Shoes & Gifts</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body>
+
+  <!-- ================= HEADER SECTION ================= -->
+  <header class="main-header">
+    <div class="header-container">
+      <div class="header-logo" id="header-logo-btn">
+        <span class="logo-main">Easy<span class="logo-sub">Buy</span></span>
+        <span class="logo-explore">Premium Store</span>
+      </div>
+
+      <div class="header-search">
+        <input type="text" id="search-input" placeholder="Search for products, brands and more" autocomplete="off">
+        <button id="search-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
+      </div>
+
+      <div class="header-actions">
+        <!-- Populated dynamically by renderAuthHeader() in render.js -->
+        <div id="auth-area"></div>
+
+        <div class="cart-btn-wrapper" id="cart-toggle-btn">
+          <i class="fa-solid fa-cart-shopping cart-icon"></i>
+          <span class="cart-text">Cart</span>
+          <span class="cart-badge" id="cart-badge-count">0</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= MAIN VIEW ================= -->
+  <main class="app-body">
+
+    <div id="customer-view" class="view-container">
+
+      <nav class="category-bar" id="category-bar"></nav>
+
+      <section class="promo-carousel" id="promo-carousel">
+        <div class="carousel-inner" id="carousel-slides">
+          <div class="carousel-slide active" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);">
+            <div class="slide-content">
+              <span class="badge yellow">EXCLUSIVE SALE</span>
+              <h1>Big Billion Days are BACK!</h1>
+              <p>Unbelievable offers on your favorite gadgets, fashion, watches, shoes, and gifts.</p>
+              <button class="shop-now-btn">Shop Now <i class="fa-solid fa-arrow-right"></i></button>
+            </div>
+            <div class="slide-image">
+              <img src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=400" alt="Tech Banner">
+            </div>
+          </div>
+          <div class="carousel-slide" style="background: linear-gradient(135deg, #e65c00 0%, #f9d423 100%);">
+            <div class="slide-content">
+              <span class="badge white">FASHION WEEK</span>
+              <h1>Step Up Your Style Game</h1>
+              <p>Flat 50% Off on Sneakers, Hoodies, Accessories and more.</p>
+              <button class="shop-now-btn">Explore Deals <i class="fa-solid fa-arrow-right"></i></button>
+            </div>
+            <div class="slide-image">
+              <img src="https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&q=80&w=400" alt="Fashion Banner">
+            </div>
+          </div>
+          <div class="carousel-slide" style="background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);">
+            <div class="slide-content">
+              <span class="badge blue">SMART LIVING</span>
+              <h1>Upgrade Your Home & Kitchen</h1>
+              <p>Discover sleek furniture, modern smart appliances, and decorative items.</p>
+              <button class="shop-now-btn">View Collection <i class="fa-solid fa-arrow-right"></i></button>
+            </div>
+            <div class="slide-image">
+              <img src="https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&q=80&w=400" alt="Home Banner">
+            </div>
+          </div>
+        </div>
+        <button class="carousel-prev" id="carousel-prev-btn"><i class="fa-solid fa-chevron-left"></i></button>
+        <button class="carousel-next" id="carousel-next-btn"><i class="fa-solid fa-chevron-right"></i></button>
+        <div class="carousel-dots" id="carousel-dots"></div>
+      </section>
+
+      <div class="catalog-layout">
+        <aside class="sidebar-filters">
+          <div class="filters-header">
+            <h3>Filters</h3>
+            <button id="clear-filters-btn">Clear All</button>
+          </div>
+
+          <div class="filter-section">
+            <h4>Price Range</h4>
+            <div class="price-input-container">
+              <div class="price-slider-group">
+                <input type="range" id="price-slider" min="0" max="100000" step="500" value="100000">
+                <div class="price-range-labels">
+                  <span>₹0</span>
+                  <span id="price-slider-label">₹100,000</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="filter-section">
+            <h4>Sort By</h4>
+            <div class="radio-group">
+              <label class="custom-radio">
+                <input type="radio" name="sort-by" value="popularity" checked>
+                <span class="radio-checkmark"></span> Popularity
+              </label>
+              <label class="custom-radio">
+                <input type="radio" name="sort-by" value="priceLowHigh">
+                <span class="radio-checkmark"></span> Price: Low to High
+              </label>
+              <label class="custom-radio">
+                <input type="radio" name="sort-by" value="priceHighLow">
+                <span class="radio-checkmark"></span> Price: High to Low
+              </label>
+              <label class="custom-radio">
+                <input type="radio" name="sort-by" value="rating">
+                <span class="radio-checkmark"></span> Customer Rating
+              </label>
+            </div>
+          </div>
+
+          <div class="filter-section">
+            <h4>Customer Rating</h4>
+            <div class="radio-group">
+              <label class="custom-radio">
+                <input type="radio" name="rating-filter" value="0" checked>
+                <span class="radio-checkmark"></span> All Ratings
+              </label>
+              <label class="custom-radio">
+                <input type="radio" name="rating-filter" value="4">
+                <span class="radio-checkmark"></span> 4★ & above
+              </label>
+              <label class="custom-radio">
+                <input type="radio" name="rating-filter" value="3.5">
+                <span class="radio-checkmark"></span> 3.5★ & above
+              </label>
+              <label class="custom-radio">
+                <input type="radio" name="rating-filter" value="3">
+                <span class="radio-checkmark"></span> 3★ & above
+              </label>
+            </div>
+          </div>
+
+          <div class="filter-section">
+            <h4>Colors</h4>
+            <div class="checkbox-group" id="colors-filter-container"></div>
+          </div>
+        </aside>
+
+        <section class="products-grid-section">
+          <div class="products-header">
+            <h2>Our Collection <span id="products-count-badge">(0 products)</span></h2>
+            <div class="active-category-indicator" id="active-category-label">Category: All</div>
+          </div>
+          <div class="products-grid" id="products-grid-container"></div>
+        </section>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ================= GLOBAL COMPONENTS (MODALS & DRAWER) ================= -->
+
+  <!-- A. CART DRAWER -->
+  <div class="cart-drawer-overlay" id="cart-drawer-overlay">
+    <div class="cart-drawer" id="cart-drawer">
+      <div class="drawer-header">
+        <h2>My Cart (<span id="cart-items-count">0</span>)</h2>
+        <button class="close-drawer-btn" id="close-cart-btn"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="drawer-body" id="cart-items-container"></div>
+      <div class="drawer-footer" id="cart-price-summary"></div>
+    </div>
+  </div>
+
+  <!-- B. PRODUCT DETAILS MODAL -->
+  <div class="modal-overlay hidden" id="details-modal-overlay">
+    <div class="modal-container details-modal">
+      <button class="close-modal-btn" id="close-details-btn"><i class="fa-solid fa-xmark"></i></button>
+      <div class="modal-body details-modal-body" id="details-modal-content"></div>
+    </div>
+  </div>
+
+  <!-- C. CHECKOUT & PAYMENT MODAL -->
+  <div class="modal-overlay hidden" id="checkout-modal-overlay">
+    <div class="modal-container checkout-modal">
+      <button class="close-modal-btn" id="close-checkout-btn"><i class="fa-solid fa-xmark"></i></button>
+      <div class="checkout-wizard">
+        <div class="wizard-steps">
+          <div class="step active" id="step-nav-address">1. Shipping</div>
+          <div class="step" id="step-nav-payment">2. Payment</div>
+          <div class="step" id="step-nav-success">3. Complete</div>
+        </div>
+        <div class="checkout-modal-body">
+          <form id="checkout-address-form" class="checkout-step-panel">
+            <h3>Shipping Address</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="ship-name">Full Name</label>
+                <input type="text" id="ship-name" required placeholder="John Doe">
+              </div>
+              <div class="form-group">
+                <label for="ship-phone">Phone Number</label>
+                <input type="tel" id="ship-phone" required placeholder="9876543210">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="ship-address">Street Address</label>
+              <textarea id="ship-address" rows="3" required placeholder="Flat No, Apartment, Area, Street"></textarea>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="ship-city">City</label>
+                <input type="text" id="ship-city" required placeholder="Mumbai">
+              </div>
+              <div class="form-group">
+                <label for="ship-pincode">Pincode</label>
+                <input type="text" id="ship-pincode" pattern="[0-9]{6}" required placeholder="400001">
+              </div>
+            </div>
+            <div class="checkout-action-footer">
+              <div class="checkout-price-preview">Total Amount: <span id="checkout-address-price">₹0</span></div>
+              <button type="submit" class="primary-btn">Proceed to Payment <i class="fa-solid fa-arrow-right"></i></button>
+            </div>
+          </form>
+
+          <div id="checkout-payment-panel" class="checkout-step-panel hidden">
+            <h3>Payment</h3>
+            <div class="payment-detail-form text-center">
+              <i class="fa-solid fa-shield-halved" style="font-size: 32px; color: var(--primary); margin-bottom: 12px;"></i>
+              <p style="font-size: 14px; margin-bottom: 6px;">You'll be securely redirected to Razorpay to complete payment.</p>
+              <p style="font-size: 12px; color: var(--text-muted);">Supports UPI, cards, netbanking and wallets.</p>
+              <div style="font-size: 20px; font-weight: 800; margin-top: 16px;">
+                Amount: <span id="payment-panel-amount">₹0</span>
+              </div>
+            </div>
+
+            <div class="checkout-action-footer">
+              <button class="secondary-btn" id="payment-back-btn"><i class="fa-solid fa-arrow-left"></i> Back</button>
+              <button class="primary-btn" id="pay-now-btn">Pay with Razorpay <i class="fa-solid fa-circle-check"></i></button>
+            </div>
+          </div>
+
+          <div id="checkout-processing-panel" class="checkout-step-panel hidden text-center">
+            <div class="payment-spinner-container">
+              <div class="payment-spinner"></div>
+            </div>
+            <h3>Authorizing Transaction...</h3>
+            <p>Please do not refresh the page or click back.</p>
+          </div>
+
+          <div id="checkout-success-panel" class="checkout-step-panel hidden text-center">
+            <div class="success-icon-container">
+              <i class="fa-solid fa-circle-check success-check-icon"></i>
+            </div>
+            <h2>Order Confirmed!</h2>
+            <p class="order-id-success">Order ID: <span id="success-order-id">ORD_123456</span></p>
+            <p class="success-message">Payment has been successfully received in our bank. Your order is confirmed and an email receipt has been sent.</p>
+            <div class="success-actions">
+              <button class="primary-btn" id="success-continue-shopping">Continue Shopping</button>
+              <button class="secondary-btn" id="success-view-orders">View Order Status</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- D. LOGIN / SIGNUP MODAL -->
+  <div class="modal-overlay hidden" id="auth-modal-overlay">
+    <div class="modal-container" style="max-width: 400px;">
+      <button class="close-modal-btn" id="close-auth-modal-btn"><i class="fa-solid fa-xmark"></i></button>
+      <div style="padding: 32px;">
+        <div class="admin-tabs" style="margin-bottom: 20px;">
+          <button class="admin-tab active" id="auth-tab-login" type="button">Login</button>
+          <button class="admin-tab" id="auth-tab-signup" type="button">Sign Up</button>
+        </div>
+
+        <form id="login-form">
+          <div class="form-group">
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" required placeholder="you@example.com">
+          </div>
+          <div class="form-group">
+            <label for="login-password">Password</label>
+            <input type="password" id="login-password" required placeholder="••••••••">
+          </div>
+          <button type="submit" class="primary-btn" style="width: 100%; justify-content: center; margin-top: 8px;">Log In</button>
+          <p style="font-size: 12px; text-align: center; margin-top: 14px; color: var(--text-muted);">
+            New here? <a href="#" id="switch-to-signup" style="color: var(--primary); font-weight: 600;">Create an account</a>
+          </p>
+        </form>
+
+        <form id="signup-form" class="hidden">
+          <div class="form-group">
+            <label for="signup-name">Full Name</label>
+            <input type="text" id="signup-name" required placeholder="John Doe">
+          </div>
+          <div class="form-group">
+            <label for="signup-email">Email</label>
+            <input type="email" id="signup-email" required placeholder="you@example.com">
+          </div>
+          <div class="form-group">
+            <label for="signup-password">Password</label>
+            <input type="password" id="signup-password" required minlength="6" placeholder="At least 6 characters">
+          </div>
+          <button type="submit" class="primary-btn" style="width: 100%; justify-content: center; margin-top: 8px;">Create Account</button>
+          <p style="font-size: 12px; text-align: center; margin-top: 14px; color: var(--text-muted);">
+            Already have an account? <a href="#" id="switch-to-login" style="color: var(--primary); font-weight: 600;">Log in</a>
+          </p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- E. MY ORDERS MODAL -->
+  <div class="modal-overlay hidden" id="my-orders-modal-overlay">
+    <div class="modal-container" style="max-width: 600px;">
+      <button class="close-modal-btn" id="close-my-orders-btn"><i class="fa-solid fa-xmark"></i></button>
+      <div style="padding: 32px;">
+        <h2 style="margin-bottom: 20px;">My Orders</h2>
+        <div id="my-orders-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toast-container"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
