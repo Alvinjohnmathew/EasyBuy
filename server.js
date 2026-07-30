@@ -340,6 +340,7 @@ app.get('/api/orders/mine', requireAuth, async (req, res) => {
     const orders = await Order.find({ userId: req.session.sub }, { _id: 0, __v: 0 })
       .sort({ _id: -1 })
       .lean();
+    res.set('Cache-Control', 'no-store');
     res.json({ orders });
   } catch (e) {
     console.error('Fetch my orders failed:', e);

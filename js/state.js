@@ -370,7 +370,7 @@ class AppState {
   async fetchMyOrders() {
     if (!this.currentUser) return [];
     try {
-      const res = await fetch('/api/orders/mine', { credentials: 'include' });
+      const res = await fetch('/api/orders/mine', { credentials: 'include', cache: 'no-store' });
       const data = await res.json();
       return data.orders || [];
     } catch (e) {
