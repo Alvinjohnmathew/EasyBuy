@@ -150,12 +150,7 @@ export function renderMyOrders(orders) {
           </div>
         `).join('')}
       </div>
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
-        <button class="secondary-btn" type="button" onclick="window.viewTracking('${o.id}')">
-          <i class="fa-solid fa-truck"></i> Track delivery
-        </button>
-        <div style="font-weight:700;">₹${o.totalAmount.toLocaleString()}</div>
-      </div>
+      <div style="text-align:right; font-weight:700; margin-top:10px;">₹${o.totalAmount.toLocaleString()}</div>
     </div>
   `).join('');
 }
