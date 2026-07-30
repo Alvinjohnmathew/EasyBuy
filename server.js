@@ -36,7 +36,9 @@ if (!MONGODB_URI || !JWT_SECRET || !ADMIN_USERNAME || !ADMIN_PASSWORD) {
 }
 
 const isProd = process.env.NODE_ENV === 'production';
-const COOKIE_NAME = 'eb_session';
+const CUSTOMER_COOKIE_NAME = 'eb_customer_session';
+const ADMIN_COOKIE_NAME = 'eb_admin_session';
+const LEGACY_COOKIE_NAME = 'eb_session';
 
 // Razorpay is optional at boot (so the rest of the site still works if it's
 // not configured yet), but the payment routes refuse to run without it.
@@ -160,9 +162,9 @@ const Review = mongoose.model('Review', reviewSchema);
 // ============================================================
 // Session helpers (JWT in an httpOnly cookie)
 // ============================================================
-function setSessionCookie(res, payload, maxAgeMs) {
+function setSessionCookie(res, cookieName, payload, maxAgeMs) {
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: Math.floor(maxAgeMs / 1000) });
-  res.cookie(COOKIE_NAME, token, {
+  res.cookie(cookieName, token, {
     httpOnly: true,
     secure: isProd,
     sameSite: 'lax',
@@ -171,26 +173,27 @@ function setSessionCookie(res, payload, maxAgeMs) {
   });
 }
 
-function readSession(req) {
-  const token = req.cookies ? req.cookies[COOKIE_NAME] : null;
+function readSession(req, cookieName, expectedRole) {
+  const token = req.cookies ? (req.cookies[cookieName] || req.cookies[LEGACY_COOKIE_NAME]) : null;
   if (!token) return null;
   try {
-    return jwt.verify(token, JWT_SECRET);
+    const session = jwt.verify(token, JWT_SECRET);
+    return !expectedRole || session.role === expectedRole ? session : null;
   } catch (e) {
     return null;
   }
 }
 
 function requireAuth(req, res, next) {
-  const session = readSession(req);
+  const session = readSession(req, CUSTOMER_COOKIE_NAME, 'customer');
   if (!session) return res.status(401).json({ error: 'Please log in to continue' });
   req.session = session;
   next();
 }
 
 function requireAdmin(req, res, next) {
-  const session = readSession(req);
-  if (!session || session.role !== 'admin') {
+  const session = readSession(req, ADMIN_COOKIE_NAME, 'admin');
+  if (!session) {
     return res.status(403).json({ error: 'Admin login required' });
   }
   req.session = session;
@@ -274,7 +277,7 @@ app.post('/api/auth/signup', async (req, res) => {
       passwordHash
     });
 
-    setSessionCookie(res, { sub: user.id, role: 'customer', name: user.name }, 7 * 24 * 60 * 60 * 1000);
+    setSessionCookie(res, CUSTOMER_COOKIE_NAME, { sub: user.id, role: 'customer', name: user.name }, 7 * 24 * 60 * 60 * 1000);
     res.json({ user: safeUser(user) });
   } catch (e) {
     console.error('Signup failed:', e);
@@ -301,7 +304,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    setSessionCookie(res, { sub: user.id, role: 'customer', name: user.name }, 7 * 24 * 60 * 60 * 1000);
+    setSessionCookie(res, CUSTOMER_COOKIE_NAME, { sub: user.id, role: 'customer', name: user.name }, 7 * 24 * 60 * 60 * 1000);
     res.json({ user: safeUser(user) });
   } catch (e) {
     console.error('Login failed:', e);
@@ -310,13 +313,14 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  res.clearCookie(COOKIE_NAME, { path: '/' });
+  res.clearCookie(CUSTOMER_COOKIE_NAME, { path: '/' });
+  res.clearCookie(LEGACY_COOKIE_NAME, { path: '/' });
   res.json({ success: true });
 });
 
 app.get('/api/auth/me', async (req, res) => {
-  const session = readSession(req);
-  if (!session || session.role !== 'customer') return res.json({ user: null });
+  const session = readSession(req, CUSTOMER_COOKIE_NAME, 'customer');
+  if (!session) return res.json({ user: null });
 
   try {
     const user = await User.findOne({ id: session.sub }).lean();
@@ -508,18 +512,19 @@ app.post('/api/admin/login', (req, res) => {
     return res.status(401).json({ error: 'Invalid admin credentials' });
   }
 
-  setSessionCookie(res, { sub: 'admin', role: 'admin', name: 'Admin' }, 8 * 60 * 60 * 1000);
+  setSessionCookie(res, ADMIN_COOKIE_NAME, { sub: 'admin', role: 'admin', name: 'Admin' }, 8 * 60 * 60 * 1000);
   res.json({ success: true });
 });
 
 app.post('/api/admin/logout', (req, res) => {
-  res.clearCookie(COOKIE_NAME, { path: '/' });
+  res.clearCookie(ADMIN_COOKIE_NAME, { path: '/' });
+  res.clearCookie(LEGACY_COOKIE_NAME, { path: '/' });
   res.json({ success: true });
 });
 
 app.get('/api/admin/me', (req, res) => {
-  const session = readSession(req);
-  res.json({ isAdmin: !!(session && session.role === 'admin') });
+  const session = readSession(req, ADMIN_COOKIE_NAME, 'admin');
+  res.json({ isAdmin: !!session });
 });
 
 // ============================================================
