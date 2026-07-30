@@ -30,6 +30,11 @@
         <!-- Populated dynamically by renderAuthHeader() in render.js -->
         <div id="auth-area"></div>
 
+        <div class="cart-btn-wrapper" id="wishlist-toggle-btn" style="margin-right: 15px;">
+          <i class="fa-solid fa-heart cart-icon" style="color: #e74c3c;"></i>
+          <span class="cart-text">Wishlist</span>
+        </div>
+
         <div class="cart-btn-wrapper" id="cart-toggle-btn">
           <i class="fa-solid fa-cart-shopping cart-icon"></i>
           <span class="cart-text">Cart</span>
@@ -229,9 +234,17 @@
                 <input type="text" id="ship-pincode" pattern="[0-9]{6}" required placeholder="400001">
               </div>
             </div>
-            <div class="checkout-action-footer">
-              <div class="checkout-price-preview">Total Amount: <span id="checkout-address-price">₹0</span></div>
-              <button type="submit" class="primary-btn">Proceed to Payment <i class="fa-solid fa-arrow-right"></i></button>
+            <div class="checkout-action-footer" style="flex-direction: column; align-items: stretch; gap: 12px;">
+              <div style="display: flex; gap: 8px;">
+                <input type="text" id="checkout-coupon-code" placeholder="Enter Coupon Code" style="flex: 1; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px;">
+                <button type="button" id="apply-coupon-btn" class="secondary-btn">Apply</button>
+              </div>
+              <div id="coupon-message" style="font-size: 13px;"></div>
+              
+              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div class="checkout-price-preview">Total: <span id="checkout-address-price">₹0</span></div>
+                <button type="submit" class="primary-btn">Proceed to Payment <i class="fa-solid fa-arrow-right"></i></button>
+              </div>
             </div>
           </form>
 
@@ -336,7 +349,62 @@
   </div>
 
   <div class="toast-container" id="toast-container"></div>
+  
+  <!-- ================= NEW FEATURE MODALS ================= -->
+  
+  <!-- WISHLIST MODAL -->
+  <div class="cart-drawer-overlay" id="wishlist-drawer-overlay">
+    <div class="cart-drawer" id="wishlist-drawer">
+      <div class="drawer-header">
+        <h2>My Wishlist</h2>
+        <button class="close-drawer-btn" id="close-wishlist-btn"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="drawer-body" id="wishlist-items-container"></div>
+    </div>
+  </div>
 
+  <!-- PROFILE MODAL -->
+  <div class="modal-overlay hidden" id="profile-modal-overlay">
+    <div class="modal-container" style="max-width: 400px;">
+      <button class="close-modal-btn" id="close-profile-btn"><i class="fa-solid fa-xmark"></i></button>
+      <div class="modal-body" style="padding: 24px;">
+        <h3>My Profile</h3>
+        <form id="profile-form" style="margin-top: 16px;">
+          <div class="form-group">
+            <label>Name</label>
+            <input type="text" id="profile-name" required>
+          </div>
+          <div class="form-group">
+            <label>Phone</label>
+            <input type="text" id="profile-phone">
+          </div>
+          <div class="form-group">
+            <label>Address</label>
+            <textarea id="profile-address" rows="3"></textarea>
+          </div>
+          <button type="submit" class="primary-btn" style="width:100%; justify-content:center;">Save Profile</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI CHAT WIDGET -->
+  <div id="ai-chat-widget" class="hidden">
+    <div class="chat-header">
+      <h4><i class="fa-solid fa-robot"></i> AI Shopping Assistant</h4>
+      <button id="close-chat-btn"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="chat-body" id="chat-messages">
+      <div class="chat-msg bot-msg">Hello! I'm your AI assistant. How can I help you shop today?</div>
+    </div>
+    <div class="chat-input-area">
+      <input type="text" id="chat-input" placeholder="Ask me anything...">
+      <button id="chat-send-btn"><i class="fa-solid fa-paper-plane"></i></button>
+    </div>
+  </div>
+  <button id="ai-chat-fab"><i class="fa-solid fa-message"></i></button>
+
+  <!-- ================= SCRIPTS ================= -->
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

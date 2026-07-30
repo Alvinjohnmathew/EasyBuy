@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { renderAdminDashboard, showToast } from './render.js';
+import { renderAdminDashboard, showToast, renderAnalytics } from './render.js';
 
 // Admin Control Panel Handlers
 
@@ -10,6 +10,9 @@ export function initAdminEvents() {
   const tabProductsContent = document.getElementById('tab-products-content');
   const tabOrdersContent = document.getElementById('tab-orders-content');
   const tabSettingsContent = document.getElementById('tab-settings-content');
+  const tabAnalyticsBtn = document.getElementById('tab-analytics-btn');
+  const tabAnalyticsContent = document.getElementById('tab-analytics-content');
+  const refreshAnalyticsBtn = document.getElementById('refresh-analytics-btn');
 
   const settingsForm = document.getElementById('admin-settings-form');
   const productForm = document.getElementById('admin-product-form');
@@ -26,28 +29,55 @@ export function initAdminEvents() {
     tabProductsBtn.classList.add('active');
     tabOrdersBtn.classList.remove('active');
     tabSettingsBtn?.classList.remove('active');
+    tabAnalyticsBtn?.classList.remove('active');
     tabProductsContent.classList.remove('hidden');
     tabOrdersContent.classList.add('hidden');
     tabSettingsContent?.classList.add('hidden');
+    tabAnalyticsContent?.classList.add('hidden');
   });
 
   tabOrdersBtn?.addEventListener('click', () => {
     tabOrdersBtn.classList.add('active');
     tabProductsBtn.classList.remove('active');
     tabSettingsBtn?.classList.remove('active');
+    tabAnalyticsBtn?.classList.remove('active');
     tabOrdersContent.classList.remove('hidden');
     tabProductsContent.classList.add('hidden');
     tabSettingsContent?.classList.add('hidden');
+    tabAnalyticsContent?.classList.add('hidden');
   });
 
   tabSettingsBtn?.addEventListener('click', () => {
     tabSettingsBtn.classList.add('active');
     tabProductsBtn.classList.remove('active');
     tabOrdersBtn.classList.remove('active');
+    tabAnalyticsBtn?.classList.remove('active');
     tabSettingsContent?.classList.remove('hidden');
     tabProductsContent.classList.add('hidden');
     tabOrdersContent.classList.add('hidden');
+    tabAnalyticsContent?.classList.add('hidden');
   });
+
+  
+  tabAnalyticsBtn?.addEventListener('click', () => {
+    tabAnalyticsBtn.classList.add('active');
+    tabProductsBtn.classList.remove('active');
+    tabOrdersBtn.classList.remove('active');
+    tabSettingsBtn?.classList.remove('active');
+    
+    tabAnalyticsContent?.classList.remove('hidden');
+    tabProductsContent.classList.add('hidden');
+    tabOrdersContent.classList.add('hidden');
+    tabSettingsContent?.classList.add('hidden');
+    
+    // Trigger render
+    renderAnalytics();
+  });
+  
+  refreshAnalyticsBtn?.addEventListener('click', () => {
+    renderAnalytics();
+  });
+
 
   // --- Save Store Settings ---
   settingsForm?.addEventListener('submit', async (e) => {

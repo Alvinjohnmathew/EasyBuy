@@ -53,7 +53,8 @@ export function renderAuthHeader() {
         <i class="fa-solid fa-circle-user"></i> ${user.name.split(' ')[0]}
       </button>
       <div class="account-dropdown hidden" id="account-dropdown">
-        <button id="my-orders-btn"><i class="fa-solid fa-box"></i> My Orders</button>
+        <button onclick="window.openProfileModal()"><i class="fa-solid fa-user"></i> My Profile</button>
+          <button id="my-orders-btn"><i class="fa-solid fa-box"></i> My Orders</button>
         <button id="logout-btn"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
       </div>
     </div>
@@ -817,4 +818,52 @@ export function updateUI() {
   renderProductsGrid();
   renderActiveProductDetails();
   renderCartDrawer();
+}
+
+export async function renderAnalytics() {
+  const container = document.getElementById('analytics-dashboard-grid');
+  if (!container) return;
+  
+  container.innerHTML = '<div style="grid-column: 1/-1; text-align:center;">Loading analytics...</div>';
+  
+  try {
+    const res = await fetch('/api/admin/analytics', { credentials: 'include' });
+    const data = await res.json();
+    
+    if (!res.ok) throw new Error(data.error);
+    
+    container.innerHTML = `
+      <div class="metric-card">
+        <div class="metric-info">
+          <h3>Total Revenue</h3>
+          <div class="metric-value">₹${(data.totalSales || 0).toLocaleString()}</div>
+        </div>
+        <div class="metric-icon" style="background: rgba(46, 204, 113, 0.1); color: #2ecc71;">
+          <i class="fa-solid fa-indian-rupee-sign"></i>
+        </div>
+      </div>
+      
+      <div class="metric-card">
+        <div class="metric-info">
+          <h3>Total Orders</h3>
+          <div class="metric-value">${data.orderCount || 0}</div>
+        </div>
+        <div class="metric-icon" style="background: rgba(52, 152, 219, 0.1); color: #3498db;">
+          <i class="fa-solid fa-box"></i>
+        </div>
+      </div>
+      
+      <div class="metric-card">
+        <div class="metric-info">
+          <h3>Average Order Value</h3>
+          <div class="metric-value">₹${data.orderCount ? Math.round(data.totalSales / data.orderCount).toLocaleString() : 0}</div>
+        </div>
+        <div class="metric-icon" style="background: rgba(155, 89, 182, 0.1); color: #9b59b6;">
+          <i class="fa-solid fa-chart-line"></i>
+        </div>
+      </div></div>
+      `;
+  } catch (e) {
+    container.innerHTML = `<div style="grid-column: 1/-1; text-align:center; color: red;">Failed to load analytics: ${e.message}</div>`;
+  }
 }

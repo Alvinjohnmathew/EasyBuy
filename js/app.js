@@ -214,3 +214,220 @@ function setupCarousel() {
 
   startTimer();
 }
+
+
+// ==================== NEW FEATURES ====================
+
+// --- Wishlist UI ---
+const wishlistToggleBtn = document.getElementById('wishlist-toggle-btn');
+const wishlistDrawerOverlay = document.getElementById('wishlist-drawer-overlay');
+const closeWishlistBtn = document.getElementById('close-wishlist-btn');
+const wishlistItemsContainer = document.getElementById('wishlist-items-container');
+
+wishlistToggleBtn?.addEventListener('click', async () => {
+  if (!state.session) {
+    showToast('Please login to view wishlist', 'error');
+    return;
+  }
+  wishlistDrawerOverlay?.classList.remove('hidden');
+  wishlistItemsContainer.innerHTML = '<div class="drawer-empty"><div class="drawer-empty-spinner"></div><p>Loading...</p></div>';
+  try {
+    const res = await fetch('/api/user/wishlist', { credentials: 'include' });
+    const data = await res.json();
+    if (res.ok) {
+      if (data.wishlist.length === 0) {
+        wishlistItemsContainer.innerHTML = '<div class="drawer-empty"><i class="fa-regular fa-heart"></i><p>Your wishlist is empty</p></div>';
+      } else {
+        wishlistItemsContainer.innerHTML = data.wishlist.map(item => `
+          <div class="cart-item">
+            <img src="${item.image}" alt="${item.title}">
+            <div class="cart-item-info">
+              <h4>${item.title}</h4>
+              <p>₹${item.price.toLocaleString()}</p>
+              <button onclick="window.removeFromWishlist('${item.id}')" style="background:none;border:none;color:red;cursor:pointer;margin-top:5px;font-size:12px;">Remove</button>
+            </div>
+          </div>
+        `).join('');
+      }
+    } else {
+      throw new Error(data.error);
+    }
+  } catch (e) {
+    wishlistItemsContainer.innerHTML = `<div class="drawer-empty"><p style="color:red;">Error: ${e.message}</p></div>`;
+  }
+});
+closeWishlistBtn?.addEventListener('click', () => wishlistDrawerOverlay?.classList.add('hidden'));
+
+window.toggleWishlist = async (productId, btn) => {
+  if (!state.session) { showToast('Login required', 'error'); return; }
+  const isAdding = !btn.classList.contains('active');
+  try {
+    const res = await fetch(`/api/user/wishlist${isAdding ? '' : '/' + productId}`, {
+      method: isAdding ? 'POST' : 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: isAdding ? JSON.stringify({ productId }) : null,
+      credentials: 'include'
+    });
+    if (res.ok) {
+      btn.classList.toggle('active');
+      showToast(isAdding ? 'Added to wishlist' : 'Removed from wishlist', 'success');
+    }
+  } catch(e) {
+    showToast('Failed to update wishlist', 'error');
+  }
+};
+window.removeFromWishlist = async (productId) => {
+  try {
+    const res = await fetch(`/api/user/wishlist/${productId}`, { method: 'DELETE', credentials: 'include' });
+    if(res.ok) document.getElementById('wishlist-toggle-btn').click(); // refresh
+  } catch(e) {}
+}
+
+// --- AI Chat UI ---
+const aiChatFab = document.getElementById('ai-chat-fab');
+const aiChatWidget = document.getElementById('ai-chat-widget');
+const closeChatBtn = document.getElementById('close-chat-btn');
+const chatInput = document.getElementById('chat-input');
+const chatSendBtn = document.getElementById('chat-send-btn');
+const chatMessages = document.getElementById('chat-messages');
+
+aiChatFab?.addEventListener('click', () => {
+  aiChatWidget.classList.toggle('hidden');
+});
+closeChatBtn?.addEventListener('click', () => {
+  aiChatWidget.classList.add('hidden');
+});
+
+async function sendChatMessage() {
+  const msg = chatInput.value.trim();
+  if (!msg) return;
+  chatMessages.innerHTML += `<div class="chat-msg user-msg">${msg}</div>`;
+  chatInput.value = '';
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg })
+    });
+    const data = await res.json();
+    chatMessages.innerHTML += `<div class="chat-msg bot-msg">${data.reply}</div>`;
+  } catch(e) {
+    chatMessages.innerHTML += `<div class="chat-msg bot-msg" style="color:red;">Error connecting to AI.</div>`;
+  }
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+chatSendBtn?.addEventListener('click', sendChatMessage);
+chatInput?.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChatMessage(); });
+
+// --- Profile UI ---
+const profileModal = document.getElementById('profile-modal-overlay');
+const closeProfileBtn = document.getElementById('close-profile-btn');
+const profileForm = document.getElementById('profile-form');
+
+window.openProfileModal = async () => {
+  if (!state.session) return;
+  profileModal?.classList.remove('hidden');
+  try {
+    const res = await fetch('/api/user/profile', { credentials: 'include' });
+    const data = await res.json();
+    if(data.user) {
+      document.getElementById('profile-name').value = data.user.name || '';
+      document.getElementById('profile-phone').value = data.user.phone || '';
+      document.getElementById('profile-address').value = data.user.address || '';
+    }
+  } catch(e) {}
+};
+closeProfileBtn?.addEventListener('click', () => profileModal?.classList.add('hidden'));
+
+profileForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = document.getElementById('profile-name').value;
+  const phone = document.getElementById('profile-phone').value;
+  const address = document.getElementById('profile-address').value;
+  
+  try {
+    const res = await fetch('/api/user/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, phone, address }),
+      credentials: 'include'
+    });
+    if(res.ok) {
+      showToast('Profile updated!', 'success');
+      profileModal.classList.add('hidden');
+    }
+  } catch(e) {
+    showToast('Failed to update profile', 'error');
+  }
+});
+
+
+window.loadReviews = async (productId) => {
+  const container = document.getElementById('reviews-container-' + productId);
+  if(!container) return;
+  try {
+    const res = await fetch('/api/products/' + productId + '/reviews');
+    const data = await res.json();
+    if(res.ok && data.reviews.length > 0) {
+      container.innerHTML = data.reviews.map(r => `
+        <div style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+          <div style="font-weight: bold;">${r.userName} <span style="color: #f39c12;">${'★'.repeat(r.rating)}</span></div>
+          <p style="margin-top: 5px; color: #555;">${r.comment}</p>
+        </div>
+      `).join('');
+    } else {
+      container.innerHTML = '<p>No reviews yet. Be the first to review!</p>';
+    }
+  } catch(e) {
+    container.innerHTML = '<p>Failed to load reviews.</p>';
+  }
+};
+
+window.submitReview = async (productId) => {
+  if (!state.session) { showToast('Login required to submit a review', 'error'); return; }
+  const rating = document.getElementById('new-review-rating').value;
+  const comment = document.getElementById('new-review-comment').value;
+  try {
+    const res = await fetch('/api/products/' + productId + '/reviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating, comment }),
+      credentials: 'include'
+    });
+    if(res.ok) {
+      showToast('Review submitted!', 'success');
+      document.getElementById('new-review-comment').value = '';
+      window.loadReviews(productId);
+    } else {
+      showToast('Failed to submit review', 'error');
+    }
+  } catch(e) {
+    showToast('Failed to submit review', 'error');
+  }
+};
+
+// Override openProductDetails to load reviews when modal opens
+const originalOpenProductDetails = window.openProductDetails;
+window.openProductDetails = (productId) => {
+  if (originalOpenProductDetails) originalOpenProductDetails(productId);
+  setTimeout(() => window.loadReviews(productId), 100);
+};
+\n
+window.viewTracking = (orderId) => {
+  // Let's just alert for now, or you could implement a full modal
+  // Because building a full modal in a patch script might be error prone,
+  // let's fetch the order and show the tracking timeline.
+  fetch('/api/orders/mine', { credentials: 'include' })
+    .then(res => res.json())
+    .then(data => {
+      const order = data.orders.find(o => o.id === orderId);
+      if (order && order.deliveryTracking && order.deliveryTracking.length > 0) {
+        const trackingText = order.deliveryTracking.map(t => new Date(t.date).toLocaleString() + ' - ' + t.status).join('\n');
+        alert('Tracking Timeline for ' + orderId + ':\n\n' + trackingText);
+      } else {
+        alert('Order Status: ' + (order ? order.status : 'Pending') + '\nNo tracking timeline available yet.');
+      }
+    });
+};
