@@ -414,6 +414,7 @@ window.openProductDetails = (productId) => {
   if (originalOpenProductDetails) originalOpenProductDetails(productId);
   setTimeout(() => window.loadReviews(productId), 100);
 };
+\n
 window.viewTracking = (orderId) => {
   // Let's just alert for now, or you could implement a full modal
   // Because building a full modal in a patch script might be error prone,

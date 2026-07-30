@@ -22,6 +22,11 @@ const MONGODB_URI = process.env.MONGODB_URI;
 const JWT_SECRET = process.env.JWT_SECRET;
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+const SMTP_FROM = process.env.EMAIL_FROM || '"EasyBuy Store" <no-reply@easybuy.store>';
 
 if (!MONGODB_URI || !JWT_SECRET || !ADMIN_USERNAME || !ADMIN_PASSWORD) {
   console.error('\n[FATAL] Missing required environment variables.');
@@ -234,10 +239,9 @@ function computeOrderItems(items, products) {
 // ============================================================
 app.get('/api/public/catalog', async (req, res) => {
   try {
-    const [products, settings] = await Promise.all([
-      Product.find({}, { _id: 0, __v: 0 }).lean(),
-      Settings.findById('default').lean()
-    ]);
+    const products = await Product.find({}, { _id: 0, __v: 0 }).lean();
+    // Store settings must never make the catalogue unavailable.
+    const settings = await Settings.findById('default').lean().catch(() => null);
     res.json({
       products: products || [],
       paymentSettings: settings
@@ -249,6 +253,19 @@ app.get('/api/public/catalog', async (req, res) => {
     res.status(500).json({ error: 'Failed to load catalog' });
   }
 });
+
+async function getCouponDiscount(code, subtotal) {
+  const normalizedCode = String(code || '').trim().toUpperCase();
+  if (!normalizedCode) return { code: '', percentage: 0, amount: 0 };
+  const coupon = await Coupon.findOne({ code: normalizedCode, active: true }).lean();
+  if (!coupon || (coupon.expiryDate && new Date(coupon.expiryDate) < new Date())) {
+    const error = new Error('Invalid or expired coupon');
+    error.statusCode = 400;
+    throw error;
+  }
+  const percentage = Math.min(100, Math.max(0, Number(coupon.discountPercentage) || 0));
+  return { code: normalizedCode, percentage, amount: Math.round(subtotal * percentage) / 100 };
+}
 
 // ============================================================
 // CUSTOMER AUTH
@@ -368,7 +385,7 @@ app.post('/api/payments/razorpay/order', requireAuth, requireRazorpay, async (re
     return res.status(403).json({ error: 'Only customer accounts can place orders' });
   }
 
-  const { items } = req.body || {};
+  const { items, couponCode } = req.body || {};
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Cart is empty' });
   }
@@ -381,8 +398,10 @@ app.post('/api/payments/razorpay/order', requireAuth, requireRazorpay, async (re
       return res.status(400).json({ error: 'No valid, in-stock items in cart' });
     }
 
+    const coupon = await getCouponDiscount(couponCode, totalAmount);
+    const payableAmount = Math.max(1, totalAmount - coupon.amount);
     const razorpayOrder = await razorpay.orders.create({
-      amount: Math.round(totalAmount * 100), // paise
+      amount: Math.round(payableAmount * 100), // paise
       currency: 'INR',
       receipt: 'rcpt_' + Date.now()
     });
@@ -395,7 +414,7 @@ app.post('/api/payments/razorpay/order', requireAuth, requireRazorpay, async (re
     });
   } catch (e) {
     console.error('Razorpay order creation failed:', e);
-    res.status(502).json({ error: 'Could not start payment. Please try again.' });
+    res.status(e.statusCode || 502).json({ error: e.message || 'Could not start payment. Please try again.' });
   }
 });
 
@@ -411,7 +430,8 @@ app.post('/api/payments/razorpay/verify', requireAuth, requireRazorpay, async (r
     razorpay_payment_id,
     razorpay_signature,
     items,
-    shippingInfo
+    shippingInfo,
+    couponCode
   } = req.body || {};
 
   if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
@@ -447,6 +467,15 @@ app.post('/api/payments/razorpay/verify', requireAuth, requireRazorpay, async (r
       return res.status(400).json({ error: 'No valid, in-stock items in cart' });
     }
 
+    const coupon = await getCouponDiscount(couponCode, totalAmount);
+    const payableAmount = Math.max(1, totalAmount - coupon.amount);
+
+    // Confirm the payment is for exactly the server-calculated amount.
+    const payment = await razorpay.payments.fetch(razorpay_payment_id);
+    if (payment.amount !== Math.round(payableAmount * 100)) {
+      return res.status(400).json({ error: 'Payment amount does not match the order total' });
+    }
+
     // Deduct stock atomically now that payment is confirmed
     await Promise.all(orderItems.map(item =>
       Product.updateOne({ id: item.productId }, { $inc: { stock: -item.quantity } })
@@ -463,8 +492,11 @@ app.post('/api/payments/razorpay/verify', requireAuth, requireRazorpay, async (r
       paymentMethod: 'Razorpay',
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,
-      totalAmount,
-      status: 'Pending'
+      totalAmount: payableAmount,
+      discountApplied: coupon.amount,
+      couponCode: coupon.code,
+      status: 'Pending',
+      deliveryTracking: [{ status: 'Pending', message: 'Order confirmed and being prepared.' }]
     });
 
     res.json({ order: stripInternal(order) });
@@ -627,7 +659,17 @@ app.patch('/api/admin/orders/:id/status', requireAdmin, async (req, res) => {
   }
 
   try {
-    const order = await Order.findOneAndUpdate({ id: req.params.id }, { status }, { new: true });
+    const trackingMessages = {
+      Pending: 'Order is being prepared.',
+      Shipped: 'Order has been shipped and is on its way.',
+      Delivered: 'Order has been delivered.',
+      Cancelled: 'Order has been cancelled.'
+    };
+    const order = await Order.findOneAndUpdate(
+      { id: req.params.id },
+      { status, $push: { deliveryTracking: { status, message: trackingMessages[status] } } },
+      { new: true }
+    );
     if (!order) return res.status(404).json({ error: 'Order not found' });
     res.json({ order: stripInternal(order) });
   } catch (e) {
@@ -660,21 +702,25 @@ app.post('/api/admin/settings', requireAdmin, async (req, res) => {
 // ============================================================
 
 // Mail transporter
-const mailTransporter = nodemailer.createTransport({
-  streamTransport: true,
-  newline: 'windows'
-});
+const mailTransporter = SMTP_HOST && SMTP_USER && SMTP_PASS
+  ? nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_PORT === 465,
+      auth: { user: SMTP_USER, pass: SMTP_PASS }
+    })
+  : nodemailer.createTransport({ streamTransport: true, newline: 'windows' });
 
 async function sendOrderConfirmation(email, order) {
   const mailOptions = {
-    from: '"EasyBuy Store" <no-reply@easybuy.store>',
+    from: SMTP_FROM,
     to: email,
     subject: `Order Confirmation - ${order.id}`,
     text: `Thank you for your order! Your order ID is ${order.id}. Total: ${order.totalAmount}`
   };
   try {
     const info = await mailTransporter.sendMail(mailOptions);
-    console.log('Order confirmation email sent (mock):', info.message.toString());
+    console.log(SMTP_HOST ? 'Order confirmation email sent.' : 'Order confirmation email generated (SMTP is not configured).');
   } catch(e) {
     console.error('Failed to send email:', e);
   }
@@ -782,12 +828,11 @@ app.post('/api/products/:id/reviews', requireAuth, async (req, res) => {
 
 // Coupons
 app.post('/api/checkout/validate-coupon', async (req, res) => {
-  const { code } = req.body;
+  const { code } = req.body || {};
   try {
-    const coupon = await Coupon.findOne({ code, active: true }).lean();
-    if (!coupon) return res.status(404).json({ error: 'Invalid or expired coupon' });
-    if (coupon.expiryDate && new Date(coupon.expiryDate) < new Date()) {
-      return res.status(400).json({ error: 'Coupon expired' });
+    const coupon = await Coupon.findOne({ code: String(code || '').trim().toUpperCase(), active: true }).lean();
+    if (!coupon || (coupon.expiryDate && new Date(coupon.expiryDate) < new Date())) {
+      return res.status(400).json({ error: 'Invalid or expired coupon' });
     }
     res.json({ discountPercentage: coupon.discountPercentage });
   } catch(e) {

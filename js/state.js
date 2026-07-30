@@ -9,6 +9,7 @@ class AppState {
     this.products = [];
     this.cart = this.loadLocal('eb_cart', []);
     this.orders = [];       // populated on admin.html only, via initAdminFromServer()
+    this.appliedCoupon = null;
     this.currentUser = null; // logged-in customer, or null
     this.isAdmin = false;    // whether we currently hold a valid admin session
 
@@ -32,7 +33,24 @@ class AppState {
     try {
       const res = await fetch('/api/public/catalog');
       const data = await res.json();
-      this.products = (data.products && data.products.length) ? data.products : initialProducts;
+      const products = Array.isArray(data.products) ? data.products : [];
+      // Older admin-created records can omit optional display fields.  Keep the
+      // storefront usable instead of allowing one incomplete record to stop the
+      // entire catalogue from rendering.
+      this.products = (products.length ? products : initialProducts)
+        .filter(product => product && product.id && product.title)
+        .map(product => ({
+          ...product,
+          category: product.category || 'Other',
+          price: Number(product.price) || 0,
+          originalPrice: Number(product.originalPrice) || Number(product.price) || 0,
+          colors: Array.isArray(product.colors) ? product.colors : [],
+          rating: Number(product.rating) || 0,
+          ratingCount: Number(product.ratingCount) || 0,
+          stock: Number(product.stock) || 0,
+          description: product.description || '',
+          image: product.image || ''
+        }));
       if (data.paymentSettings) this.paymentSettings = data.paymentSettings;
     } catch (e) {
       console.error('Failed to load catalog from server:', e);
@@ -318,7 +336,7 @@ class AppState {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items })
+      body: JSON.stringify({ items, couponCode: this.appliedCoupon?.code || '' })
     });
     const data = await res.json();
     if (!res.ok) return { ok: false, error: data.error || 'Could not start payment' };
@@ -338,15 +356,35 @@ class AppState {
         razorpay_payment_id: paymentResponse.razorpay_payment_id,
         razorpay_signature: paymentResponse.razorpay_signature,
         items,
-        shippingInfo
+        shippingInfo,
+        couponCode: this.appliedCoupon?.code || ''
       })
     });
     const data = await res.json();
     if (!res.ok) return { ok: false, error: data.error || 'Payment verification failed' };
 
     this.clearCart();
+    this.appliedCoupon = null;
     this.notify();
     return { ok: true, order: data.order };
+  }
+
+  async applyCoupon(code) {
+    const normalizedCode = String(code || '').trim().toUpperCase();
+    if (!normalizedCode) return { ok: false, error: 'Enter a coupon code' };
+    try {
+      const res = await fetch('/api/checkout/validate-coupon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: normalizedCode })
+      });
+      const data = await res.json();
+      if (!res.ok) return { ok: false, error: data.error || 'Coupon could not be applied' };
+      this.appliedCoupon = { code: normalizedCode, discountPercentage: Number(data.discountPercentage) || 0 };
+      return { ok: true, ...this.appliedCoupon };
+    } catch {
+      return { ok: false, error: 'Could not validate coupon' };
+    }
   }
 
   async fetchMyOrders() {
