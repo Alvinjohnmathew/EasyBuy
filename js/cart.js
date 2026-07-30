@@ -6,25 +6,8 @@ export function initCartEvents() {
   const addressForm = document.getElementById('checkout-address-form');
   const payNowBtn = document.getElementById('pay-now-btn');
   const paymentBackBtn = document.getElementById('payment-back-btn');
-  const couponInput = document.getElementById('checkout-coupon-code');
-  const applyCouponBtn = document.getElementById('apply-coupon-btn');
-  const couponMessage = document.getElementById('coupon-message');
-
   // Shipping details state cache
   let shippingDetails = null;
-
-  applyCouponBtn?.addEventListener('click', async () => {
-    applyCouponBtn.disabled = true;
-    const result = await state.applyCoupon(couponInput?.value);
-    applyCouponBtn.disabled = false;
-    if (couponMessage) {
-      couponMessage.textContent = result.ok
-        ? `${result.discountPercentage}% discount applied (${result.code})`
-        : result.error;
-      couponMessage.style.color = result.ok ? 'var(--success-color, #16803c)' : '#c62828';
-    }
-    if (result.ok) showToast('Coupon applied', 'success');
-  });
 
   // Step 1 Form Submission (Shipping details)
   addressForm?.addEventListener('submit', (e) => {
@@ -35,7 +18,8 @@ export function initCartEvents() {
       phone: document.getElementById('ship-phone').value,
       address: document.getElementById('ship-address').value,
       city: document.getElementById('ship-city').value,
-      pincode: document.getElementById('ship-pincode').value
+      pincode: document.getElementById('ship-pincode').value,
+      country: document.getElementById('ship-country').value
     };
     showCheckoutStep('payment');
   });

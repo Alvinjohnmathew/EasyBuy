@@ -117,8 +117,6 @@ const orderSchema = new mongoose.Schema({
   razorpayOrderId: String,
   razorpayPaymentId: String,
   totalAmount: Number,
-  discountApplied: { type: Number, default: 0 },
-  couponCode: String,
   deliveryTracking: [{
     status: String,
     date: { type: Date, default: Date.now },
@@ -143,12 +141,6 @@ const reviewSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-const couponSchema = new mongoose.Schema({
-  code: { type: String, unique: true, required: true },
-  discountPercentage: { type: Number, required: true },
-  expiryDate: { type: Date },
-  active: { type: Boolean, default: true }
-});
 
 // Strip Mongo's internal fields so API responses match the original shape
 const stripInternal = (doc) => {
@@ -164,7 +156,6 @@ const Product = mongoose.model('Product', productSchema);
 const Order = mongoose.model('Order', orderSchema);
 const Settings = mongoose.model('Settings', settingsSchema);
 const Review = mongoose.model('Review', reviewSchema);
-const Coupon = mongoose.model('Coupon', couponSchema);
 
 // ============================================================
 // Session helpers (JWT in an httpOnly cookie)
@@ -254,18 +245,6 @@ app.get('/api/public/catalog', async (req, res) => {
   }
 });
 
-async function getCouponDiscount(code, subtotal) {
-  const normalizedCode = String(code || '').trim().toUpperCase();
-  if (!normalizedCode) return { code: '', percentage: 0, amount: 0 };
-  const coupon = await Coupon.findOne({ code: normalizedCode, active: true }).lean();
-  if (!coupon || (coupon.expiryDate && new Date(coupon.expiryDate) < new Date())) {
-    const error = new Error('Invalid or expired coupon');
-    error.statusCode = 400;
-    throw error;
-  }
-  const percentage = Math.min(100, Math.max(0, Number(coupon.discountPercentage) || 0));
-  return { code: normalizedCode, percentage, amount: Math.round(subtotal * percentage) / 100 };
-}
 
 // ============================================================
 // CUSTOMER AUTH
@@ -385,7 +364,7 @@ app.post('/api/payments/razorpay/order', requireAuth, requireRazorpay, async (re
     return res.status(403).json({ error: 'Only customer accounts can place orders' });
   }
 
-  const { items, couponCode } = req.body || {};
+  const { items } = req.body || {};
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Cart is empty' });
   }
@@ -398,10 +377,8 @@ app.post('/api/payments/razorpay/order', requireAuth, requireRazorpay, async (re
       return res.status(400).json({ error: 'No valid, in-stock items in cart' });
     }
 
-    const coupon = await getCouponDiscount(couponCode, totalAmount);
-    const payableAmount = Math.max(1, totalAmount - coupon.amount);
     const razorpayOrder = await razorpay.orders.create({
-      amount: Math.round(payableAmount * 100), // paise
+      amount: Math.round(totalAmount * 100), // paise
       currency: 'INR',
       receipt: 'rcpt_' + Date.now()
     });
@@ -430,8 +407,7 @@ app.post('/api/payments/razorpay/verify', requireAuth, requireRazorpay, async (r
     razorpay_payment_id,
     razorpay_signature,
     items,
-    shippingInfo,
-    couponCode
+    shippingInfo
   } = req.body || {};
 
   if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
@@ -442,6 +418,9 @@ app.post('/api/payments/razorpay/verify', requireAuth, requireRazorpay, async (r
   }
   if (!shippingInfo || !shippingInfo.name || !shippingInfo.phone || !shippingInfo.address || !shippingInfo.city || !shippingInfo.pincode) {
     return res.status(400).json({ error: 'Shipping information is incomplete' });
+  }
+  if (String(shippingInfo.country || '').trim().toLowerCase() !== 'india') {
+    return res.status(400).json({ error: 'We currently deliver only within India.' });
   }
 
   // Cryptographic proof the payment actually happened and wasn't forged
@@ -467,12 +446,9 @@ app.post('/api/payments/razorpay/verify', requireAuth, requireRazorpay, async (r
       return res.status(400).json({ error: 'No valid, in-stock items in cart' });
     }
 
-    const coupon = await getCouponDiscount(couponCode, totalAmount);
-    const payableAmount = Math.max(1, totalAmount - coupon.amount);
-
     // Confirm the payment is for exactly the server-calculated amount.
     const payment = await razorpay.payments.fetch(razorpay_payment_id);
-    if (payment.amount !== Math.round(payableAmount * 100)) {
+    if (payment.amount !== Math.round(totalAmount * 100)) {
       return res.status(400).json({ error: 'Payment amount does not match the order total' });
     }
 
@@ -492,9 +468,7 @@ app.post('/api/payments/razorpay/verify', requireAuth, requireRazorpay, async (r
       paymentMethod: 'Razorpay',
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,
-      totalAmount: payableAmount,
-      discountApplied: coupon.amount,
-      couponCode: coupon.code,
+      totalAmount,
       status: 'Pending',
       deliveryTracking: [{ status: 'Pending', message: 'Order confirmed and being prepared.' }]
     });
@@ -824,20 +798,6 @@ app.post('/api/products/:id/reviews', requireAuth, async (req, res) => {
     res.json({ review: stripInternal(review) });
   } catch(e) {
     res.status(500).json({ error: 'Failed to add review' });
-  }
-});
-
-// Coupons
-app.post('/api/checkout/validate-coupon', async (req, res) => {
-  const { code } = req.body || {};
-  try {
-    const coupon = await Coupon.findOne({ code: String(code || '').trim().toUpperCase(), active: true }).lean();
-    if (!coupon || (coupon.expiryDate && new Date(coupon.expiryDate) < new Date())) {
-      return res.status(400).json({ error: 'Invalid or expired coupon' });
-    }
-    res.json({ discountPercentage: coupon.discountPercentage });
-  } catch(e) {
-    res.status(500).json({ error: 'Failed to validate coupon' });
   }
 });
 

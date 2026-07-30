@@ -511,7 +511,7 @@ export function renderCartDrawer() {
   });
 
   const savings = totalMRP - totalSellingPrice;
-  const deliveryCharge = totalSellingPrice > 500 ? 0 : 40;
+  const deliveryCharge = 0;
   const finalPrice = totalSellingPrice + deliveryCharge;
 
   priceSummaryContainer.innerHTML = `
@@ -526,8 +526,8 @@ export function renderCartDrawer() {
         <span style="color: var(--price-green)">- ₹${savings.toLocaleString()}</span>
       </div>
       <div class="summary-row">
-        <span>Delivery Charges</span>
-        <span>${deliveryCharge === 0 ? '<span style="color: var(--price-green)">FREE</span>' : `₹${deliveryCharge}`}</span>
+        <span>Delivery across India</span>
+        <span style="color: var(--price-green)">FREE</span>
       </div>
       <div class="summary-row total-row">
         <span>Total Amount</span>

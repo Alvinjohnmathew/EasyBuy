@@ -9,7 +9,6 @@ class AppState {
     this.products = [];
     this.cart = this.loadLocal('eb_cart', []);
     this.orders = [];       // populated on admin.html only, via initAdminFromServer()
-    this.appliedCoupon = null;
     this.currentUser = null; // logged-in customer, or null
     this.isAdmin = false;    // whether we currently hold a valid admin session
 
@@ -336,7 +335,7 @@ class AppState {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items, couponCode: this.appliedCoupon?.code || '' })
+      body: JSON.stringify({ items })
     });
     const data = await res.json();
     if (!res.ok) return { ok: false, error: data.error || 'Could not start payment' };
@@ -356,36 +355,17 @@ class AppState {
         razorpay_payment_id: paymentResponse.razorpay_payment_id,
         razorpay_signature: paymentResponse.razorpay_signature,
         items,
-        shippingInfo,
-        couponCode: this.appliedCoupon?.code || ''
+        shippingInfo
       })
     });
     const data = await res.json();
     if (!res.ok) return { ok: false, error: data.error || 'Payment verification failed' };
 
     this.clearCart();
-    this.appliedCoupon = null;
     this.notify();
     return { ok: true, order: data.order };
   }
 
-  async applyCoupon(code) {
-    const normalizedCode = String(code || '').trim().toUpperCase();
-    if (!normalizedCode) return { ok: false, error: 'Enter a coupon code' };
-    try {
-      const res = await fetch('/api/checkout/validate-coupon', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: normalizedCode })
-      });
-      const data = await res.json();
-      if (!res.ok) return { ok: false, error: data.error || 'Coupon could not be applied' };
-      this.appliedCoupon = { code: normalizedCode, discountPercentage: Number(data.discountPercentage) || 0 };
-      return { ok: true, ...this.appliedCoupon };
-    } catch {
-      return { ok: false, error: 'Could not validate coupon' };
-    }
-  }
 
   async fetchMyOrders() {
     if (!this.currentUser) return [];
