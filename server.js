@@ -499,12 +499,13 @@ app.post('/api/payments/razorpay/verify', requireAuth, requireRazorpay, async (r
       deliveryTracking: [{ status: 'Pending', message: 'Order confirmed and being prepared.' }]
     });
 
-    res.json({ order: stripInternal(order) });
-    
+    // The message is sent only after the payment signature is verified and the
+    // order has been successfully stored.
     const user = await User.findOne({ id: req.session.sub });
     if (user && user.email) {
-      sendOrderConfirmation(user.email, order);
+      await sendOrderConfirmation(user.email, order);
     }
+    res.json({ order: stripInternal(order) });
   } catch (e) {
     console.error('Order fulfillment after payment failed:', e);
     res.status(500).json({ error: 'Payment succeeded but order creation failed. Contact support with your payment ID: ' + razorpay_payment_id });

@@ -54,7 +54,6 @@ export function renderAuthHeader() {
       </button>
       <div class="account-dropdown hidden" id="account-dropdown">
         <button onclick="window.openProfileModal()"><i class="fa-solid fa-user"></i> My Profile</button>
-          <button id="my-orders-btn"><i class="fa-solid fa-box"></i> My Orders</button>
         <button id="logout-btn"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
       </div>
     </div>
@@ -122,7 +121,7 @@ export function switchAuthTab(tab) {
 
 // ================= MY ORDERS PANEL =================
 
-function renderMyOrders(orders) {
+export function renderMyOrders(orders) {
   const container = document.getElementById('my-orders-list');
   if (!container) return;
 
@@ -151,7 +150,12 @@ function renderMyOrders(orders) {
           </div>
         `).join('')}
       </div>
-      <div style="text-align:right; font-weight:700; margin-top:8px;">₹${o.totalAmount.toLocaleString()}</div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+        <button class="secondary-btn" type="button" onclick="window.viewTracking('${o.id}')">
+          <i class="fa-solid fa-truck"></i> Track delivery
+        </button>
+        <div style="font-weight:700;">₹${o.totalAmount.toLocaleString()}</div>
+      </div>
     </div>
   `).join('');
 }

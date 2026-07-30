@@ -118,6 +118,6 @@ export function initCartEvents() {
 
   document.getElementById('success-view-orders')?.addEventListener('click', () => {
     document.getElementById('checkout-modal-overlay').classList.add('hidden');
-    document.getElementById('my-orders-btn')?.click();
+    document.getElementById('my-orders-header-btn')?.click();
   });
 }
