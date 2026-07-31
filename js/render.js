@@ -162,16 +162,16 @@ export function renderCategoryBar() {
   const categoryBar = document.getElementById('category-bar');
   if (!categoryBar) return;
 
-  const categories = ['All', 'Gadgets', 'Fashion - Men', 'Fashion - Women', 'Watch - Men', 'Watch - Women', 'Shoes', 'Gifts'];
+  // Primary departments only. Gender and style belong in a product's
+  // subcategory, just as Flipkart keeps Fashion and Watches unified.
+  const categories = ['All', 'Gadgets', 'Fashion', 'Watch', 'Shoes', 'Gifts'];
   const activeCategory = state.filters.category;
 
   const icons = {
     'All': 'fa-border-all',
     'Gadgets': 'fa-mobile-screen',
-    'Fashion - Men': 'fa-shirt',
-    'Fashion - Women': 'fa-person-dress',
-    'Watch - Men': 'fa-stopwatch',
-    'Watch - Women': 'fa-clock',
+    'Fashion': 'fa-shirt',
+    'Watch': 'fa-clock',
     'Shoes': 'fa-shoe-prints',
     'Gifts': 'fa-gift'
   };
