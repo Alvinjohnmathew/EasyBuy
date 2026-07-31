@@ -1,3 +1,4 @@
+const axios = require("axios");
 require('dotenv').config();
 
 const express = require('express');
@@ -11,7 +12,6 @@ const path = require('path');
 const mongoose = require('mongoose');
 const multer = require('multer');
 const Razorpay = require('razorpay');
-const nodemailer = require('nodemailer');
 const app = express();
 
 // ============================================================
@@ -22,11 +22,7 @@ const MONGODB_URI = process.env.MONGODB_URI;
 const JWT_SECRET = process.env.JWT_SECRET;
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-const SMTP_HOST = process.env.SMTP_HOST;
-const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
-const SMTP_USER = process.env.SMTP_USER;
-const SMTP_PASS = process.env.SMTP_PASS;
-const SMTP_FROM = process.env.EMAIL_FROM || '"EasyBuy Store" <no-reply@easybuy.store>';
+const SMTP_FROM = process.env.EMAIL_FROM || '"EasyBuy Store" <alvinjohnmathew6@gmail.com>';
 
 if (!MONGODB_URI || !JWT_SECRET || !ADMIN_USERNAME || !ADMIN_PASSWORD) {
   console.error('\n[FATAL] Missing required environment variables.');
@@ -688,85 +684,77 @@ app.post('/api/admin/settings', requireAdmin, async (req, res) => {
 // NEW FEATURES API
 // ============================================================
 
-// Mail transporter
-const mailTransporter = SMTP_HOST && SMTP_USER && SMTP_PASS
-  ? nodemailer.createTransport({
-      host: SMTP_HOST,
-      port: Number(SMTP_PORT),
-      secure: false,
-
-      auth: {
-          user: SMTP_USER,
-          pass: SMTP_PASS
-      },
-
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 15000,
-
-      tls: {
-          rejectUnauthorized: false
-      }
-  })
-  : nodemailer.createTransport({
-      streamTransport: true,
-      newline: 'windows'
-  });
-
-mailTransporter.verify(function (err, success) {
-
-    if (err) {
-        console.error("SMTP VERIFY ERROR");
-        console.error(err);
-    } else {
-        console.log("SMTP CONNECTED SUCCESSFULLY");
-    }
-
-});
-
-async function sendOrderConfirmation(email, order) {
-
-    try {
-
-        const info = await mailTransporter.sendMail({
-
-            from: SMTP_FROM,
-
-            to: email,
-
-            subject: `EasyBuy Order Confirmation (${order.id})`,
-
-            html: `
-            <h2>Thank you for shopping with EasyBuy!</h2>
-
-            <p>Your order has been confirmed.</p>
-
-            <p><b>Order ID:</b> ${order.id}</p>
-
-            <p><b>Total:</b> ₹${order.totalAmount}</p>
-
-            <p><b>Status:</b> ${order.status}</p>
-
-            <hr>
-
-            <p>Thank you for choosing EasyBuy.</p>
-            `
-        });
-
-        console.log("EMAIL SENT");
-        console.log(info.messageId);
-
-    }
-    catch(err){
-
-        console.error("EMAIL FAILED");
-
-        console.error(err);
-
-    }
-
+// Parses "Name <email@example.com>" or a bare "email@example.com" into
+// { name, email } for Brevo's sender field.
+function parseSender(fromString) {
+  const match = String(fromString || '').match(/^"?([^"<]*)"?\s*<([^>]+)>$/);
+  if (match) {
+    return { name: match[1].trim() || 'EasyBuy', email: match[2].trim() };
+  }
+  return { name: 'EasyBuy', email: String(fromString || '').trim() || 'alvinjohnmathew6@gmail.com' };
 }
 
+async function sendOrderConfirmation(email, order) {
+    if (!process.env.BREVO_API_KEY) {
+        console.error('BREVO_API_KEY is not set — cannot send order confirmation email.');
+        return;
+    }
+
+    const sender = parseSender(SMTP_FROM);
+
+    try {
+        await axios.post(
+            "https://api.brevo.com/v3/smtp/email",
+            {
+                sender,
+                to: [
+                    {
+                        email: email
+                    }
+                ],
+                subject: `Order Confirmation - ${order.id}`,
+                htmlContent: `
+                    <h2>Thank you for shopping with EasyBuy!</h2>
+
+                    <p>Your order has been confirmed.</p>
+
+                    <p><b>Order ID:</b> ${order.id}</p>
+
+                    <p><b>Total:</b> ₹${order.totalAmount}</p>
+
+                    <p><b>Status:</b> ${order.status}</p>
+
+                    <br>
+
+                    <p>Questions about this order? Contact us at alvinjohnmathew6@gmail.com</p>
+
+                    <p>Thank you for choosing EasyBuy.</p>
+                `
+            },
+            {
+                headers: {
+                    "api-key": process.env.BREVO_API_KEY,
+                    "Content-Type": "application/json"
+                }
+            }
+        );
+
+        console.log(`✅ Order confirmation email sent to ${email} for ${order.id}`);
+
+    } catch (err) {
+        // Surface the ACTUAL reason Brevo rejected the request — the most
+        // common causes are an unverified sender address or an invalid/
+        // expired API key. Without logging err.response.data here, these
+        // failures are silent and impossible to diagnose from the logs.
+        console.error(`❌ Brevo email send FAILED for order ${order.id}, recipient ${email}`);
+        if (err.response) {
+            console.error('Brevo status:', err.response.status);
+            console.error('Brevo response:', JSON.stringify(err.response.data));
+        } else {
+            console.error('Error:', err.message);
+        }
+    }
+}
 // User Profile
 app.get('/api/user/profile', requireAuth, async (req, res) => {
   try {
