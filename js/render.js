@@ -160,6 +160,7 @@ function renderMyOrders(orders) {
 
 export function renderCategoryBar() {
   const categoryBar = document.getElementById('category-bar');
+  const subcategoryBar = document.getElementById('category-subbar');
   if (!categoryBar) return;
 
   // Primary departments only. Gender and style belong in a product's
@@ -189,7 +190,27 @@ export function renderCategoryBar() {
     item.addEventListener('click', () => {
       const selectedCat = item.getAttribute('data-category');
       state.setFilter('category', selectedCat);
+      state.setFilter('subcategory', 'All');
     });
+  });
+
+  if (!subcategoryBar) return;
+  const selectedCategory = state.filters.category;
+  if (!['Fashion', 'Watch'].includes(selectedCategory)) {
+    subcategoryBar.classList.add('hidden');
+    subcategoryBar.innerHTML = '';
+    return;
+  }
+
+  const options = ['All', 'Men', 'Women'];
+  subcategoryBar.classList.remove('hidden');
+  subcategoryBar.innerHTML = options.map(option => `
+    <button type="button" class="category-subitem ${state.filters.subcategory === option ? 'active' : ''}" data-subcategory="${option}">
+      ${option === 'All' ? `All ${selectedCategory}` : `${option}'s ${selectedCategory}`}
+    </button>
+  `).join('');
+  subcategoryBar.querySelectorAll('.category-subitem').forEach(button => {
+    button.addEventListener('click', () => state.setFilter('subcategory', button.dataset.subcategory));
   });
 }
 

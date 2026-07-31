@@ -17,6 +17,7 @@ class AppState {
     this.searchQuery = '';
     this.filters = {
       category: 'All',
+      subcategory: 'All',
       priceMin: 0,
       priceMax: 100000,
       minRating: 0,
@@ -416,6 +417,7 @@ class AppState {
   resetFilters() {
     this.filters = {
       category: 'All',
+      subcategory: 'All',
       priceMin: 0,
       priceMax: 100000,
       minRating: 0,
@@ -439,6 +441,11 @@ class AppState {
 
         const primaryCategory = String(product.category || '').split(' - ')[0];
         if (this.filters.category !== 'All' && primaryCategory !== this.filters.category) {
+          return false;
+        }
+
+        const productSubcategory = product.subcategory || String(product.category || '').split(' - ')[1] || '';
+        if (this.filters.subcategory !== 'All' && productSubcategory.toLowerCase() !== this.filters.subcategory.toLowerCase()) {
           return false;
         }
 
