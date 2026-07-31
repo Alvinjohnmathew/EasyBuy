@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { renderAdminDashboard, showToast, renderAnalytics } from './render.js';
+import { renderAdminDashboard, showToast, renderAnalytics, renderProductImagesPreview } from './render.js';
 
 // Admin Control Panel Handlers
 
@@ -17,10 +17,8 @@ export function initAdminEvents() {
   const settingsForm = document.getElementById('admin-settings-form');
   const productForm = document.getElementById('admin-product-form');
   const btnCancelProduct = document.getElementById('btn-cancel-product');
-  const prodImageFile = document.getElementById('prod-image-file');
-  const prodImageUrlInput = document.getElementById('prod-image');
-  const prodImagePreview = document.getElementById('prod-image-preview');
-  const prodImagePlaceholderIcon = document.getElementById('prod-image-placeholder-icon');
+  const prodImagesFile = document.getElementById('prod-images-file');
+  const prodImagesData = document.getElementById('prod-images-data');
 
   const adminProductSearchInput = document.getElementById('admin-product-search');
 
@@ -95,64 +93,29 @@ export function initAdminEvents() {
     renderAdminDashboard();
   });
 
-  // --- Direct Photo Upload ---
-  function setPreview(url) {
-    if (url) {
-      prodImagePreview.src = url;
-      prodImagePreview.classList.remove('hidden');
-      prodImagePlaceholderIcon?.classList.add('hidden');
-    } else {
-      prodImagePreview.src = '';
-      prodImagePreview.classList.add('hidden');
-      prodImagePlaceholderIcon?.classList.remove('hidden');
-    }
-  }
-
-  prodImageFile?.addEventListener('change', async () => {
-    const file = prodImageFile.files?.[0];
-    if (!file) return;
-
-    if (file.size > 3 * 1024 * 1024) {
-      showToast('Image is too large (max 3MB)', 'error');
-      prodImageFile.value = '';
+  // --- Multiple photo upload ---
+  prodImagesFile?.addEventListener('change', async () => {
+    const files = Array.from(prodImagesFile.files || []);
+    if (!files.length) return;
+    if (files.length > 6 || files.some(file => file.size > 3 * 1024 * 1024)) {
+      showToast('Select up to 6 images, each no larger than 3MB', 'error');
+      prodImagesFile.value = '';
       return;
     }
-
-    // Show an instant local preview while it uploads
-    const localPreviewUrl = URL.createObjectURL(file);
-    setPreview(localPreviewUrl);
-
     const formData = new FormData();
-    formData.append('image', file);
-
+    files.forEach(file => formData.append('images', file));
     try {
-      const res = await fetch('/api/admin/upload-image', {
-        method: 'POST',
-        credentials: 'include',
-        body: formData
-      });
+      const res = await fetch('/api/admin/upload-images', { method: 'POST', credentials: 'include', body: formData });
       const data = await res.json();
-
-      if (!res.ok) {
-        showToast(data.error || 'Upload failed', 'error');
-        prodImageFile.value = '';
-        setPreview(prodImageUrlInput.value);
-        return;
-      }
-
-      prodImageUrlInput.value = data.imageUrl;
-      setPreview(data.imageUrl);
-      showToast('Photo uploaded!', 'success');
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      const current = JSON.parse(prodImagesData?.value || '[]');
+      const images = [...current, ...(data.imageUrls || [])].slice(0, 6);
+      renderProductImagesPreview(images);
+      prodImagesFile.value = '';
+      showToast(`${data.imageUrls.length} photo(s) uploaded`, 'success');
     } catch (e) {
-      showToast('Upload failed. Please check your connection.', 'error');
-      prodImageFile.value = '';
-      setPreview(prodImageUrlInput.value);
+      showToast(e.message || 'Upload failed. Please try again.', 'error');
     }
-  });
-
-  // Typing/pasting a URL directly also updates the preview
-  prodImageUrlInput?.addEventListener('input', () => {
-    setPreview(prodImageUrlInput.value);
   });
 
   // --- Cancel Edit/Create ---
@@ -171,7 +134,9 @@ export function initAdminEvents() {
     const price = Number(document.getElementById('prod-price').value);
     const originalPrice = Number(document.getElementById('prod-original-price').value);
     const colors = document.getElementById('prod-colors').value;
-    const image = document.getElementById('prod-image').value.trim();
+    const sizes = document.getElementById('prod-sizes').value;
+    const subcategory = document.getElementById('prod-subcategory').value.trim();
+    const images = JSON.parse(prodImagesData?.value || '[]');
     const description = document.getElementById('prod-desc').value.trim();
 
     if (price > originalPrice) {
@@ -180,9 +145,8 @@ export function initAdminEvents() {
     }
 
     const productFields = {
-      title, category, stock, price, originalPrice, colors,
-      image: image || undefined,
-      description
+      title, category, subcategory, stock, price, originalPrice, colors, sizes,
+      images, image: images[0] || undefined, description
     };
 
     const submitBtn = document.getElementById('btn-save-product');

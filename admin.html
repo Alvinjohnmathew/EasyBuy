@@ -169,13 +169,15 @@
             <label for="prod-category">Category</label>
             <select id="prod-category" required>
               <option value="Gadgets">Gadgets</option>
-              <option value="Fashion - Men">Fashion - Men</option>
-              <option value="Fashion - Women">Fashion - Women</option>
-              <option value="Watch - Men">Watch - Men</option>
-              <option value="Watch - Women">Watch - Women</option>
+              <option value="Fashion">Fashion</option>
+              <option value="Watch">Watch</option>
               <option value="Shoes">Shoes</option>
               <option value="Gifts">Gifts</option>
             </select>
+          </div>
+          <div class="form-group">
+            <label for="prod-subcategory">Subcategory (optional)</label>
+            <input type="text" id="prod-subcategory" placeholder="e.g., Men, Women, Kids, Casual">
           </div>
           <div class="form-group">
             <label for="prod-stock">Stock Quantity</label>
@@ -198,18 +200,15 @@
           <span class="input-helper">Separate multiple colors with commas. Make sure to specify at least one.</span>
         </div>
         <div class="form-group">
-          <label for="prod-image-file">Product Photo</label>
-          <div class="image-upload-row">
-            <div class="image-preview-box" id="prod-image-preview-box">
-              <img id="prod-image-preview" src="" alt="" class="hidden">
-              <i class="fa-solid fa-image" id="prod-image-placeholder-icon"></i>
-            </div>
-            <div style="flex-grow: 1;">
-              <input type="file" id="prod-image-file" accept="image/png,image/jpeg,image/webp,image/gif">
-              <span class="input-helper">JPG, PNG, WEBP or GIF, up to 3MB. Or paste an image URL below instead.</span>
-              <input type="url" id="prod-image" placeholder="Or paste an image URL here" style="margin-top: 8px;">
-            </div>
-          </div>
+          <label for="prod-sizes">Sizes (Comma separated, optional)</label>
+          <input type="text" id="prod-sizes" placeholder="e.g., S, M, L, XL">
+        </div>
+        <div class="form-group">
+          <label for="prod-images-file">Product Photos</label>
+          <input type="file" id="prod-images-file" multiple accept="image/png,image/jpeg,image/webp,image/gif">
+          <span class="input-helper">Select up to 6 JPG, PNG, WEBP or GIF images (3MB each). Click an uploaded photo to make it the cover.</span>
+          <input type="hidden" id="prod-images-data" value="[]">
+          <div class="image-gallery-preview" id="prod-images-preview"></div>
         </div>
         <div class="form-group">
           <label for="prod-desc">Product Description</label>

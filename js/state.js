@@ -40,7 +40,8 @@ class AppState {
         .filter(product => product && product.id && product.title)
         .map(product => ({
           ...product,
-          category: product.category || 'Other',
+          category: String(product.category || 'Other').split(' - ')[0],
+          subcategory: product.subcategory || String(product.category || '').split(' - ')[1] || '',
           price: Number(product.price) || 0,
           originalPrice: Number(product.originalPrice) || Number(product.price) || 0,
           colors: Array.isArray(product.colors) ? product.colors : [],
@@ -436,7 +437,8 @@ class AppState {
           if (!matchTitle && !matchCategory && !matchDesc) return false;
         }
 
-        if (this.filters.category !== 'All' && product.category !== this.filters.category) {
+        const primaryCategory = String(product.category || '').split(' - ')[0];
+        if (this.filters.category !== 'All' && primaryCategory !== this.filters.category) {
           return false;
         }
 

@@ -902,7 +902,11 @@ export function openAdminProductModal(productId = null) {
     if (product) {
       document.getElementById('admin-form-product-id').value = product.id;
       document.getElementById('prod-title').value = product.title;
-      document.getElementById('prod-category').value = product.category;
+      // Convert older entries such as "Fashion - Men" into the new
+      // Flipkart-style structure: one Fashion category plus a subcategory.
+      const [baseCategory, legacySubcategory = ''] = String(product.category || 'Gadgets').split(' - ', 2);
+      document.getElementById('prod-category').value = baseCategory;
+      document.getElementById('prod-subcategory').value = product.subcategory || legacySubcategory;
       document.getElementById('prod-stock').value = product.stock;
       document.getElementById('prod-price').value = product.price;
       document.getElementById('prod-original-price').value = product.originalPrice;
