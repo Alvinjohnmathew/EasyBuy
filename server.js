@@ -480,11 +480,17 @@ app.post('/api/payments/razorpay/verify', requireAuth, requireRazorpay, async (r
 
     // The message is sent only after the payment signature is verified and the
     // order has been successfully stored.
-    const user = await User.findOne({ id: req.session.sub });
-    if (user && user.email) {
-      await sendOrderConfirmation(user.email, order);
-    }
-    res.json({ order: stripInternal(order) });
+   // Send response immediately
+res.json({ order: stripInternal(order) });
+
+// Send email in background
+const user = await User.findOne({ id: req.session.sub });
+
+if (user && user.email) {
+    sendOrderConfirmation(user.email, order)
+        .then(() => console.log("Order email sent"))
+        .catch(err => console.error("Order email failed:", err));
+}
   } catch (e) {
     console.error('Order fulfillment after payment failed:', e);
     res.status(500).json({ error: 'Payment succeeded but order creation failed. Contact support with your payment ID: ' + razorpay_payment_id });
@@ -686,25 +692,79 @@ app.post('/api/admin/settings', requireAdmin, async (req, res) => {
 const mailTransporter = SMTP_HOST && SMTP_USER && SMTP_PASS
   ? nodemailer.createTransport({
       host: SMTP_HOST,
-      port: SMTP_PORT,
-      secure: SMTP_PORT === 465,
-      auth: { user: SMTP_USER, pass: SMTP_PASS }
-    })
-  : nodemailer.createTransport({ streamTransport: true, newline: 'windows' });
+      port: Number(SMTP_PORT),
+      secure: false,
+
+      auth: {
+          user: SMTP_USER,
+          pass: SMTP_PASS
+      },
+
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 15000,
+
+      tls: {
+          rejectUnauthorized: false
+      }
+  })
+  : nodemailer.createTransport({
+      streamTransport: true,
+      newline: 'windows'
+  });
+
+mailTransporter.verify(function (err, success) {
+
+    if (err) {
+        console.error("SMTP VERIFY ERROR");
+        console.error(err);
+    } else {
+        console.log("SMTP CONNECTED SUCCESSFULLY");
+    }
+
+});
 
 async function sendOrderConfirmation(email, order) {
-  const mailOptions = {
-    from: SMTP_FROM,
-    to: email,
-    subject: `Order Confirmation - ${order.id}`,
-    text: `Thank you for your order! Your order ID is ${order.id}. Total: ${order.totalAmount}`
-  };
-  try {
-    const info = await mailTransporter.sendMail(mailOptions);
-    console.log(SMTP_HOST ? 'Order confirmation email sent.' : 'Order confirmation email generated (SMTP is not configured).');
-  } catch(e) {
-    console.error('Failed to send email:', e);
-  }
+
+    try {
+
+        const info = await mailTransporter.sendMail({
+
+            from: SMTP_FROM,
+
+            to: email,
+
+            subject: `EasyBuy Order Confirmation (${order.id})`,
+
+            html: `
+            <h2>Thank you for shopping with EasyBuy!</h2>
+
+            <p>Your order has been confirmed.</p>
+
+            <p><b>Order ID:</b> ${order.id}</p>
+
+            <p><b>Total:</b> ₹${order.totalAmount}</p>
+
+            <p><b>Status:</b> ${order.status}</p>
+
+            <hr>
+
+            <p>Thank you for choosing EasyBuy.</p>
+            `
+        });
+
+        console.log("EMAIL SENT");
+        console.log(info.messageId);
+
+    }
+    catch(err){
+
+        console.error("EMAIL FAILED");
+
+        console.error(err);
+
+    }
+
 }
 
 // User Profile
