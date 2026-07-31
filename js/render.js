@@ -54,6 +54,7 @@ export function renderAuthHeader() {
       </button>
       <div class="account-dropdown hidden" id="account-dropdown">
         <button onclick="window.openProfileModal()"><i class="fa-solid fa-user"></i> My Profile</button>
+          <button id="my-orders-btn"><i class="fa-solid fa-box"></i> My Orders</button>
         <button id="logout-btn"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
       </div>
     </div>
@@ -121,7 +122,7 @@ export function switchAuthTab(tab) {
 
 // ================= MY ORDERS PANEL =================
 
-export function renderMyOrders(orders) {
+function renderMyOrders(orders) {
   const container = document.getElementById('my-orders-list');
   if (!container) return;
 
@@ -150,7 +151,7 @@ export function renderMyOrders(orders) {
           </div>
         `).join('')}
       </div>
-      <div style="text-align:right; font-weight:700; margin-top:10px;">₹${o.totalAmount.toLocaleString()}</div>
+      <div style="text-align:right; font-weight:700; margin-top:8px;">₹${o.totalAmount.toLocaleString()}</div>
     </div>
   `).join('');
 }
@@ -161,14 +162,16 @@ export function renderCategoryBar() {
   const categoryBar = document.getElementById('category-bar');
   if (!categoryBar) return;
 
-  const categories = ['All', 'Gadgets', 'Fashion', 'Watch', 'Shoes', 'Gifts'];
+  const categories = ['All', 'Gadgets', 'Fashion - Men', 'Fashion - Women', 'Watch - Men', 'Watch - Women', 'Shoes', 'Gifts'];
   const activeCategory = state.filters.category;
 
   const icons = {
     'All': 'fa-border-all',
     'Gadgets': 'fa-mobile-screen',
-    'Fashion': 'fa-shirt',
-    'Watch': 'fa-stopwatch',
+    'Fashion - Men': 'fa-shirt',
+    'Fashion - Women': 'fa-person-dress',
+    'Watch - Men': 'fa-stopwatch',
+    'Watch - Women': 'fa-clock',
     'Shoes': 'fa-shoe-prints',
     'Gifts': 'fa-gift'
   };
@@ -335,12 +338,21 @@ export function renderActiveProductDetails() {
     stockMessage = `<span class="detail-stock-status low-stock">Only ${product.stock} left in stock - order soon!</span>`;
   }
 
+  const galleryImages = (product.images && product.images.length > 0) ? product.images : [product.image];
+
   contentEl.innerHTML = `
     <div class="product-detail-grid">
       <div class="detail-image-panel">
         <div class="detail-img-box">
-          <img src="${product.image}" id="main-detail-img" alt="${product.title}">
+          <img src="${galleryImages[0]}" id="main-detail-img" alt="${product.title}">
         </div>
+        ${galleryImages.length > 1 ? `
+          <div class="detail-thumb-strip" id="detail-thumb-strip">
+            ${galleryImages.map((url, i) => `
+              <img src="${url}" class="detail-thumb ${i === 0 ? 'active' : ''}" data-index="${i}" alt="${product.title} photo ${i + 1}">
+            `).join('')}
+          </div>
+        ` : ''}
         <div class="detail-btn-row">
           <button class="detail-add-cart" id="modal-add-cart-btn" ${isOutOfStock ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
             <i class="fa-solid fa-cart-shopping"></i> Add to Cart
@@ -383,6 +395,15 @@ export function renderActiveProductDetails() {
       </div>
     </div>
   `;
+
+  const mainImg = document.getElementById('main-detail-img');
+  contentEl.querySelectorAll('.detail-thumb').forEach(thumb => {
+    thumb.addEventListener('click', () => {
+      if (mainImg) mainImg.src = thumb.src;
+      contentEl.querySelectorAll('.detail-thumb').forEach(t => t.classList.remove('active'));
+      thumb.classList.add('active');
+    });
+  });
 
   let selectedColor = product.colors[0] || 'Default';
   const colorBtns = contentEl.querySelectorAll('.color-option-btn');
@@ -506,7 +527,7 @@ export function renderCartDrawer() {
   });
 
   const savings = totalMRP - totalSellingPrice;
-  const deliveryCharge = 0;
+  const deliveryCharge = totalSellingPrice > 500 ? 0 : 40;
   const finalPrice = totalSellingPrice + deliveryCharge;
 
   priceSummaryContainer.innerHTML = `
@@ -521,8 +542,8 @@ export function renderCartDrawer() {
         <span style="color: var(--price-green)">- ₹${savings.toLocaleString()}</span>
       </div>
       <div class="summary-row">
-        <span>Delivery across India</span>
-        <span style="color: var(--price-green)">FREE</span>
+        <span>Delivery Charges</span>
+        <span>${deliveryCharge === 0 ? '<span style="color: var(--price-green)">FREE</span>' : `₹${deliveryCharge}`}</span>
       </div>
       <div class="summary-row total-row">
         <span>Total Amount</span>
@@ -768,19 +789,70 @@ export function renderAdminDashboard() {
   }
 }
 
+// Renders the multi-photo thumbnail strip in the admin product form, and
+// keeps the hidden #prod-images-data field (a JSON array of image URLs/data
+// URIs) in sync. Self-contained: clicking a thumbnail makes it the cover
+// (moves it to index 0), the × removes it — both just re-call this function
+// with the updated array, so callers never need to touch the DOM directly.
+export function renderProductImagesPreview(images = []) {
+  const container = document.getElementById('prod-images-preview');
+  const hiddenField = document.getElementById('prod-images-data');
+  if (!container || !hiddenField) return;
+
+  const list = (images || []).filter(Boolean);
+  hiddenField.value = JSON.stringify(list);
+
+  if (list.length === 0) {
+    container.innerHTML = `
+      <div class="image-preview-box">
+        <i class="fa-solid fa-image" style="font-size: 24px; color: var(--text-muted);"></i>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = list.map((url, index) => `
+    <div class="image-gallery-thumb ${index === 0 ? 'is-cover' : ''}" data-index="${index}">
+      <img src="${url}" alt="Photo ${index + 1}">
+      ${index === 0 ? '<span class="cover-badge">Cover</span>' : ''}
+      <button type="button" class="thumb-remove-btn" data-index="${index}" title="Remove">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.image-gallery-thumb').forEach(thumb => {
+    thumb.addEventListener('click', (e) => {
+      if (e.target.closest('.thumb-remove-btn')) return; // handled separately below
+      const index = Number(thumb.getAttribute('data-index'));
+      if (index === 0) return; // already the cover
+      const reordered = [...list];
+      const [chosen] = reordered.splice(index, 1);
+      reordered.unshift(chosen);
+      renderProductImagesPreview(reordered);
+    });
+  });
+
+  container.querySelectorAll('.thumb-remove-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const index = Number(btn.getAttribute('data-index'));
+      const remaining = list.filter((_, i) => i !== index);
+      renderProductImagesPreview(remaining);
+    });
+  });
+}
+
 export function openAdminProductModal(productId = null) {
   const overlay = document.getElementById('admin-product-modal-overlay');
   const titleEl = document.getElementById('admin-modal-title');
   const form = document.getElementById('admin-product-form');
-  const previewImg = document.getElementById('prod-image-preview');
-  const placeholderIcon = document.getElementById('prod-image-placeholder-icon');
 
   if (!overlay || !form) return;
 
   form.reset();
   document.getElementById('admin-form-product-id').value = '';
-  previewImg?.classList.add('hidden');
-  placeholderIcon?.classList.remove('hidden');
+  renderProductImagesPreview([]);
 
   if (productId) {
     titleEl.textContent = 'Edit Product Details';
@@ -793,14 +865,12 @@ export function openAdminProductModal(productId = null) {
       document.getElementById('prod-price').value = product.price;
       document.getElementById('prod-original-price').value = product.originalPrice;
       document.getElementById('prod-colors').value = product.colors.join(', ');
-      document.getElementById('prod-image').value = product.image;
       document.getElementById('prod-desc').value = product.description;
 
-      if (product.image && previewImg) {
-        previewImg.src = product.image;
-        previewImg.classList.remove('hidden');
-        placeholderIcon?.classList.add('hidden');
-      }
+      const existingImages = (product.images && product.images.length > 0)
+        ? product.images
+        : (product.image ? [product.image] : []);
+      renderProductImagesPreview(existingImages);
     }
   } else {
     titleEl.textContent = 'Add New Product';

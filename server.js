@@ -88,6 +88,7 @@ const productSchema = new mongoose.Schema({
   rating: Number,
   ratingCount: Number,
   image: String,
+  images: [String],
   description: String,
   stock: Number
 });
@@ -574,11 +575,37 @@ app.post('/api/admin/upload-image', requireAdmin, (req, res) => {
   });
 });
 
+// Upload MULTIPLE product photos at once (up to 6, 3MB each). Returns an
+// array of data URIs in the same order the files were selected.
+app.post('/api/admin/upload-images', requireAdmin, (req, res) => {
+  upload.array('images', 6)(req, res, (err) => {
+    if (err) {
+      const message = err.code === 'LIMIT_FILE_SIZE'
+        ? 'One of the images is too large (max 3MB each)'
+        : err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE'
+          ? 'You can upload up to 6 photos per product'
+          : (err.message || 'Upload failed');
+      return res.status(400).json({ error: message });
+    }
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No image files received' });
+    }
+
+    const imageUrls = req.files.map(file =>
+      `data:${file.mimetype};base64,${file.buffer.toString('base64')}`
+    );
+    res.json({ imageUrls });
+  });
+});
+
 app.post('/api/admin/products', requireAdmin, async (req, res) => {
   const p = req.body || {};
   if (!p.title || !p.category) {
     return res.status(400).json({ error: 'Title and category are required' });
   }
+
+  const images = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
+  const coverImage = p.image || images[0] || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&q=80&w=600';
 
   try {
     const product = await Product.create({
@@ -590,7 +617,8 @@ app.post('/api/admin/products', requireAdmin, async (req, res) => {
       colors: Array.isArray(p.colors) ? p.colors : String(p.colors || '').split(',').map(s => s.trim()).filter(Boolean),
       rating: Number(p.rating || 4.0),
       ratingCount: Number(p.ratingCount || 1),
-      image: p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&q=80&w=600',
+      image: coverImage,
+      images: images.length > 0 ? images : [coverImage],
       description: p.description || 'No description provided.',
       stock: Number(p.stock || 0)
     });
@@ -609,13 +637,18 @@ app.put('/api/admin/products/:id', requireAdmin, async (req, res) => {
     const existing = await Product.findOne({ id: req.params.id });
     if (!existing) return res.status(404).json({ error: 'Product not found' });
 
+    const images = Array.isArray(p.images) ? p.images.filter(Boolean) : undefined;
+    const coverImage = p.image || (images && images[0]) || existing.image;
+
     existing.set({
       ...p,
       price: Number(p.price),
       originalPrice: Number(p.originalPrice || p.price),
       colors,
       stock: Number(p.stock),
-      rating: Number(p.rating || existing.rating)
+      rating: Number(p.rating || existing.rating),
+      image: coverImage,
+      images: images && images.length > 0 ? images : (existing.images && existing.images.length > 0 ? existing.images : [coverImage])
     });
     await existing.save();
     res.json({ product: stripInternal(existing) });
