@@ -147,7 +147,7 @@ function renderMyOrders(orders) {
       <div class="order-items-purchased">
         ${o.items.map(item => `
           <div class="order-item-line">
-            • ${item.title} <span style="color: var(--text-muted)">(${item.color})</span> x ${item.quantity}
+            • ${item.title} <span style="color: var(--text-muted)">(${item.color}${item.size ? `, Size: ${item.size}` : ''})</span> x ${item.quantity}
           </div>
         `).join('')}
       </div>
@@ -296,7 +296,13 @@ export function renderProductsGrid() {
       e.stopPropagation();
       const pId = btn.getAttribute('data-id');
       const product = state.getProductById(pId);
-      if (product && product.colors.length > 0) {
+      if (!product) return;
+      if (product.sizes && product.sizes.length > 0) {
+        // Needs a size — open the detail modal so it can be selected first.
+        state.setActiveProduct(product);
+        return;
+      }
+      if (product.colors.length > 0) {
         const added = state.addToCart(pId, product.colors[0]);
         showToast(added ? 'Product added to cart!' : 'Product is out of stock or cart limit reached', added ? 'success' : 'error');
       }
@@ -308,7 +314,12 @@ export function renderProductsGrid() {
       e.stopPropagation();
       const pId = btn.getAttribute('data-id');
       const product = state.getProductById(pId);
-      if (product && product.colors.length > 0) {
+      if (!product) return;
+      if (product.sizes && product.sizes.length > 0) {
+        state.setActiveProduct(product);
+        return;
+      }
+      if (product.colors.length > 0) {
         state.addToCart(pId, product.colors[0]);
         document.getElementById('cart-drawer-overlay').classList.add('open');
       }
@@ -384,6 +395,18 @@ export function renderActiveProductDetails() {
             `).join('')}
           </div>
         </div>
+        ${(product.sizes && product.sizes.length > 0) ? `
+          <div class="detail-options-section">
+            <h4>Select Size:</h4>
+            <div class="color-options-row" id="detail-size-options">
+              ${product.sizes.map(sz => `
+                <button class="color-option-btn size-option-btn" data-size="${sz}">
+                  ${sz}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
         <div class="detail-options-section">
           <h4>Availability:</h4>
           <div>${stockMessage}</div>
@@ -406,7 +429,7 @@ export function renderActiveProductDetails() {
   });
 
   let selectedColor = product.colors[0] || 'Default';
-  const colorBtns = contentEl.querySelectorAll('.color-option-btn');
+  const colorBtns = contentEl.querySelectorAll('.color-option-btn:not(.size-option-btn)');
   colorBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       colorBtns.forEach(b => b.classList.remove('selected'));
@@ -415,8 +438,23 @@ export function renderActiveProductDetails() {
     });
   });
 
+  const requiresSize = product.sizes && product.sizes.length > 0;
+  let selectedSize = null;
+  const sizeBtns = contentEl.querySelectorAll('.size-option-btn');
+  sizeBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      sizeBtns.forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      selectedSize = btn.getAttribute('data-size');
+    });
+  });
+
   document.getElementById('modal-add-cart-btn')?.addEventListener('click', () => {
-    const added = state.addToCart(product.id, selectedColor);
+    if (requiresSize && !selectedSize) {
+      showToast('Please select a size', 'error');
+      return;
+    }
+    const added = state.addToCart(product.id, selectedColor, selectedSize);
     if (added) {
       showToast('Product added to cart!', 'success');
       state.setActiveProduct(null);
@@ -427,7 +465,11 @@ export function renderActiveProductDetails() {
   });
 
   document.getElementById('modal-buy-now-btn')?.addEventListener('click', () => {
-    state.addToCart(product.id, selectedColor);
+    if (requiresSize && !selectedSize) {
+      showToast('Please select a size', 'error');
+      return;
+    }
+    state.addToCart(product.id, selectedColor, selectedSize);
     state.setActiveProduct(null);
     document.getElementById('cart-drawer-overlay').classList.add('open');
   });
@@ -479,7 +521,7 @@ export function renderCartDrawer() {
         </div>
         <div class="cart-item-details">
           <div class="cart-item-title" title="${product.title}">${product.title}</div>
-          <div class="cart-item-meta">Color: ${cartItem.color}</div>
+          <div class="cart-item-meta">Color: ${cartItem.color}${cartItem.size ? ` &nbsp;|&nbsp; Size: ${cartItem.size}` : ''}</div>
           <div class="cart-item-prices">
             <span class="item-price">₹${discountPrice.toLocaleString()}</span>
             ${mrpPrice > discountPrice ? `<span class="item-original-price">₹${mrpPrice.toLocaleString()}</span>` : ''}
@@ -759,7 +801,7 @@ export function renderAdminDashboard() {
           <div class="order-items-purchased">
             ${o.items.map(item => `
               <div class="order-item-line">
-                • ${item.title} <span style="color: var(--text-muted)">(${item.color})</span> x ${item.quantity}
+                • ${item.title} <span style="color: var(--text-muted)">(${item.color}${item.size ? `, Size: ${item.size}` : ''})</span> x ${item.quantity}
               </div>
             `).join('')}
           </div>
@@ -865,6 +907,7 @@ export function openAdminProductModal(productId = null) {
       document.getElementById('prod-price').value = product.price;
       document.getElementById('prod-original-price').value = product.originalPrice;
       document.getElementById('prod-colors').value = product.colors.join(', ');
+      document.getElementById('prod-sizes').value = (product.sizes || []).join(', ');
       document.getElementById('prod-desc').value = product.description;
 
       const existingImages = (product.images && product.images.length > 0)

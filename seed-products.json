@@ -47,7 +47,14 @@
     "ratingCount": 420,
     "image": "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=600",
     "description": "Elevate your game and your style. The Nike Air Max Impact 4 features Max Air cushioning in the heel to help absorb impact. Lightweight mesh upper keeps your feet cool, while the aggressive traction pattern helps you cut and pivot with confidence.",
-    "stock": 15
+    "stock": 15,
+    "sizes": [
+      "7",
+      "8",
+      "9",
+      "10",
+      "11"
+    ]
   },
   {
     "id": "p4",
@@ -64,7 +71,13 @@
     "ratingCount": 1520,
     "image": "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&q=80&w=600",
     "description": "A comfortable, standard-fit t-shirt crafted from 100% premium cotton. Features the classic Puma cat logo on the chest. Perfect for daily casual wear or athletic training.",
-    "stock": 25
+    "stock": 25,
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ]
   },
   {
     "id": "p5",

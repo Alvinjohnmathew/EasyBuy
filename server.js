@@ -85,6 +85,7 @@ const productSchema = new mongoose.Schema({
   price: Number,
   originalPrice: Number,
   colors: [String],
+  sizes: [String],
   rating: Number,
   ratingCount: Number,
   image: String,
@@ -103,6 +104,7 @@ const orderSchema = new mongoose.Schema({
     image: String,
     price: Number,
     color: String,
+    size: String,
     quantity: Number
   }],
   shippingInfo: {
@@ -218,6 +220,7 @@ function computeOrderItems(items, products) {
       image: product.image,
       price: product.price,
       color: cartItem.color,
+      size: cartItem.size || null,
       quantity: qty
     });
   }
@@ -615,6 +618,7 @@ app.post('/api/admin/products', requireAdmin, async (req, res) => {
       price: Number(p.price),
       originalPrice: Number(p.originalPrice || p.price),
       colors: Array.isArray(p.colors) ? p.colors : String(p.colors || '').split(',').map(s => s.trim()).filter(Boolean),
+      sizes: Array.isArray(p.sizes) ? p.sizes : String(p.sizes || '').split(',').map(s => s.trim()).filter(Boolean),
       rating: Number(p.rating || 4.0),
       ratingCount: Number(p.ratingCount || 1),
       image: coverImage,
@@ -632,6 +636,7 @@ app.post('/api/admin/products', requireAdmin, async (req, res) => {
 app.put('/api/admin/products/:id', requireAdmin, async (req, res) => {
   const p = req.body || {};
   const colors = Array.isArray(p.colors) ? p.colors : String(p.colors || '').split(',').map(s => s.trim()).filter(Boolean);
+  const sizes = Array.isArray(p.sizes) ? p.sizes : String(p.sizes || '').split(',').map(s => s.trim()).filter(Boolean);
 
   try {
     const existing = await Product.findOne({ id: req.params.id });
@@ -645,6 +650,7 @@ app.put('/api/admin/products/:id', requireAdmin, async (req, res) => {
       price: Number(p.price),
       originalPrice: Number(p.originalPrice || p.price),
       colors,
+      sizes,
       stock: Number(p.stock),
       rating: Number(p.rating || existing.rating),
       image: coverImage,

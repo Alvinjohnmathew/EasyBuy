@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { updateUI, openAuthModal, renderMyOrders, showToast } from './render.js';
+import { updateUI } from './render.js';
 import { initCartEvents } from './cart.js';
 import { initAuthEvents } from './auth.js';
 
@@ -47,28 +47,6 @@ function setupGlobalEvents() {
 
   const closeMyOrdersBtn = document.getElementById('close-my-orders-btn');
   const myOrdersModalOverlay = document.getElementById('my-orders-modal-overlay');
-  const myOrdersHeaderBtn = document.getElementById('my-orders-header-btn');
-  let ordersRefreshTimer = null;
-
-  const refreshMyOrders = async () => {
-    if (!state.getCurrentUser()) return;
-    renderMyOrders(await state.fetchMyOrders());
-  };
-  const startOrdersRefresh = () => {
-    if (ordersRefreshTimer) return;
-    ordersRefreshTimer = window.setInterval(() => {
-      if (myOrdersModalOverlay?.classList.contains('hidden')) {
-        window.clearInterval(ordersRefreshTimer);
-        ordersRefreshTimer = null;
-        return;
-      }
-      refreshMyOrders();
-    }, 10000);
-  };
-  const stopOrdersRefresh = () => {
-    if (ordersRefreshTimer) window.clearInterval(ordersRefreshTimer);
-    ordersRefreshTimer = null;
-  };
 
   // --- Header Navigation & Search ---
   searchInput?.addEventListener('input', (e) => {
@@ -124,25 +102,12 @@ function setupGlobalEvents() {
   // --- My Orders Modal Close ---
   closeMyOrdersBtn?.addEventListener('click', () => {
     myOrdersModalOverlay?.classList.add('hidden');
-    stopOrdersRefresh();
   });
 
   myOrdersModalOverlay?.addEventListener('click', (e) => {
     if (e.target === myOrdersModalOverlay) {
       myOrdersModalOverlay.classList.add('hidden');
-      stopOrdersRefresh();
     }
-  });
-
-  myOrdersHeaderBtn?.addEventListener('click', async () => {
-    if (!state.getCurrentUser()) {
-      showToast('Please log in to view your orders', 'error');
-      openAuthModal('login');
-      return;
-    }
-    await refreshMyOrders();
-    myOrdersModalOverlay?.classList.remove('hidden');
-    startOrdersRefresh();
   });
 
   // --- Filters Side Panel Events ---
@@ -449,19 +414,5 @@ window.openProductDetails = (productId) => {
   if (originalOpenProductDetails) originalOpenProductDetails(productId);
   setTimeout(() => window.loadReviews(productId), 100);
 };
-window.viewTracking = (orderId) => {
-  // Let's just alert for now, or you could implement a full modal
-  // Because building a full modal in a patch script might be error prone,
-  // let's fetch the order and show the tracking timeline.
-  fetch('/api/orders/mine', { credentials: 'include', cache: 'no-store' })
-    .then(res => res.json())
-    .then(data => {
-      const order = data.orders.find(o => o.id === orderId);
-      if (order && order.deliveryTracking && order.deliveryTracking.length > 0) {
-        const trackingText = order.deliveryTracking.map(t => `${new Date(t.date).toLocaleString()} - ${t.status}${t.message ? `: ${t.message}` : ''}`).join('\n');
-        alert('Tracking Timeline for ' + orderId + ':\n\n' + trackingText);
-      } else {
-        alert('Order Status: ' + (order ? order.status : 'Pending') + '\nNo tracking timeline available yet.');
-      }
-    });
-};
+
+// Delivery tracking feature removed — was never wired to any UI button.
