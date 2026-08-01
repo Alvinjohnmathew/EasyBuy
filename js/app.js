@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { updateUI } from './render.js';
+import { updateUI, openAuthModal, renderMyOrders, showToast } from './render.js';
 import { initCartEvents } from './cart.js';
 import { initAuthEvents } from './auth.js';
 
@@ -47,6 +47,18 @@ function setupGlobalEvents() {
 
   const closeMyOrdersBtn = document.getElementById('close-my-orders-btn');
   const myOrdersModalOverlay = document.getElementById('my-orders-modal-overlay');
+  const myOrdersHeaderBtn = document.getElementById('my-orders-header-btn');
+
+  const showMyOrders = async () => {
+    if (!state.getCurrentUser()) {
+      showToast('Please log in to view your orders', 'error');
+      openAuthModal('login');
+      return;
+    }
+    const orders = await state.fetchMyOrders();
+    renderMyOrders(orders);
+    myOrdersModalOverlay?.classList.remove('hidden');
+  };
 
   // --- Header Navigation & Search ---
   searchInput?.addEventListener('input', (e) => {
@@ -109,6 +121,8 @@ function setupGlobalEvents() {
       myOrdersModalOverlay.classList.add('hidden');
     }
   });
+
+  myOrdersHeaderBtn?.addEventListener('click', showMyOrders);
 
   // --- Filters Side Panel Events ---
   const priceSlider = document.getElementById('price-slider');

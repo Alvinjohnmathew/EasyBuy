@@ -20,7 +20,12 @@ async function showDashboardView() {
   dashboardView?.classList.remove('hidden');
   logoutBtn?.classList.remove('hidden');
 
-  await state.initAdminFromServer();
+  const loaded = await state.initAdminFromServer();
+  if (!loaded) {
+    showLoginView();
+    showToast('Could not load the admin dashboard. Please sign in again.', 'error');
+    return;
+  }
 
   if (!dashboardInitialized) {
     initAdminEvents();

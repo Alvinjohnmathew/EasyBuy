@@ -172,16 +172,20 @@ class AppState {
   // ================= ADMIN AUTH =================
 
   async adminLogin(username, password) {
-    const res = await fetch('/api/admin/login', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
-    const data = await res.json();
-    if (!res.ok) return { ok: false, error: data.error || 'Login failed' };
-    this.isAdmin = true;
-    return { ok: true };
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (!res.ok) return { ok: false, error: data.error || 'Login failed' };
+      this.isAdmin = true;
+      return { ok: true };
+    } catch {
+      return { ok: false, error: 'Could not contact the server. Please try again.' };
+    }
   }
 
   async adminLogout() {
