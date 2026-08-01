@@ -19,8 +19,105 @@ export function initAdminEvents() {
   const btnCancelProduct = document.getElementById('btn-cancel-product');
   const prodImagesFile = document.getElementById('prod-images-file');
   const prodImagesData = document.getElementById('prod-images-data');
+  const whatsappImportBtn = document.getElementById('admin-import-whatsapp-btn');
+  const whatsappImportOverlay = document.getElementById('whatsapp-import-modal-overlay');
+  const whatsappCatalogFile = document.getElementById('whatsapp-catalog-file');
+  const whatsappPreviewBtn = document.getElementById('preview-whatsapp-import-btn');
+  const whatsappCommitBtn = document.getElementById('commit-whatsapp-import-btn');
+  const whatsappPreviewContainer = document.getElementById('whatsapp-import-preview');
+  let whatsappPreviewToken = '';
 
   const adminProductSearchInput = document.getElementById('admin-product-search');
+
+  const closeWhatsAppImport = () => {
+    whatsappImportOverlay?.classList.add('hidden');
+    whatsappPreviewToken = '';
+    if (whatsappCatalogFile) whatsappCatalogFile.value = '';
+    if (whatsappPreviewContainer) whatsappPreviewContainer.replaceChildren();
+    if (whatsappCommitBtn) whatsappCommitBtn.disabled = true;
+  };
+
+  const renderWhatsAppPreview = (products) => {
+    if (!whatsappPreviewContainer) return;
+    whatsappPreviewContainer.replaceChildren();
+    const intro = document.createElement('p');
+    intro.className = 'input-helper';
+    intro.textContent = `${products.length} product(s) detected. Uncheck anything you do not want to import.`;
+    whatsappPreviewContainer.appendChild(intro);
+    const list = document.createElement('div');
+    list.className = 'whatsapp-import-list';
+    products.forEach((product) => {
+      const row = document.createElement('label');
+      row.className = 'whatsapp-import-row';
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = true;
+      check.dataset.previewId = product.previewId;
+      const details = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = product.title;
+      const meta = document.createElement('span');
+      meta.textContent = `₹${product.price} · ${product.category}${product.subcategory ? ` – ${product.subcategory}` : ''}${product.hasImage ? ' · Image found' : ' · No image found'}`;
+      details.append(title, meta);
+      row.append(check, details);
+      list.appendChild(row);
+    });
+    whatsappPreviewContainer.appendChild(list);
+  };
+
+  whatsappImportBtn?.addEventListener('click', () => whatsappImportOverlay?.classList.remove('hidden'));
+  document.getElementById('close-whatsapp-import-btn')?.addEventListener('click', closeWhatsAppImport);
+  document.getElementById('cancel-whatsapp-import-btn')?.addEventListener('click', closeWhatsAppImport);
+
+  whatsappPreviewBtn?.addEventListener('click', async () => {
+    const file = whatsappCatalogFile?.files?.[0];
+    if (!file) return showToast('Choose your WhatsApp chat ZIP first', 'error');
+    const formData = new FormData();
+    formData.append('catalog', file);
+    whatsappPreviewBtn.disabled = true;
+    whatsappPreviewBtn.textContent = 'Reading catalog…';
+    try {
+      const response = await fetch('/api/admin/import-whatsapp-catalog/preview', { method: 'POST', credentials: 'include', body: formData });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not read the catalog');
+      whatsappPreviewToken = data.token;
+      renderWhatsAppPreview(data.products || []);
+      whatsappCommitBtn.disabled = !(data.products || []).length;
+      showToast('Catalog preview is ready. Review the products before importing.', 'success');
+    } catch (error) {
+      whatsappPreviewToken = '';
+      whatsappCommitBtn.disabled = true;
+      showToast(error.message || 'Could not read the catalog', 'error');
+    } finally {
+      whatsappPreviewBtn.disabled = false;
+      whatsappPreviewBtn.textContent = 'Preview Products';
+    }
+  });
+
+  whatsappCommitBtn?.addEventListener('click', async () => {
+    const previewIds = [...document.querySelectorAll('#whatsapp-import-preview input[data-preview-id]:checked')]
+      .map(input => input.dataset.previewId);
+    if (!whatsappPreviewToken || !previewIds.length) return showToast('Select at least one product to import', 'error');
+    whatsappCommitBtn.disabled = true;
+    whatsappCommitBtn.textContent = 'Importing…';
+    try {
+      const response = await fetch('/api/admin/import-whatsapp-catalog/commit', {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: whatsappPreviewToken, previewIds })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not import products');
+      await state.initAdminFromServer();
+      renderAdminDashboard();
+      closeWhatsAppImport();
+      showToast(`${data.importedCount} product(s) imported${data.imagesSkipped ? ` (${data.imagesSkipped} oversized image(s) skipped)` : ''}`, 'success');
+    } catch (error) {
+      showToast(error.message || 'Could not import products', 'error');
+      whatsappCommitBtn.disabled = false;
+    } finally {
+      whatsappCommitBtn.textContent = 'Import Selected';
+    }
+  });
 
   // --- Admin Tabs Navigation ---
   tabProductsBtn?.addEventListener('click', () => {

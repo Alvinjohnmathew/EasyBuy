@@ -60,6 +60,9 @@
           <p>Manage catalog, update prices, colors, stock, and process orders.</p>
         </div>
         <div class="admin-actions">
+          <button class="secondary-btn" id="admin-import-whatsapp-btn" type="button">
+            <i class="fa-brands fa-whatsapp"></i> Import WhatsApp Catalog
+          </button>
           <button class="primary-btn" id="admin-add-product-btn">
             <i class="fa-solid fa-plus"></i> Add New Product
           </button>
@@ -234,6 +237,28 @@
           <button type="submit" class="primary-btn" id="btn-save-product">Save Product</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- WHATSAPP CATALOG IMPORT MODAL -->
+  <div class="modal-overlay hidden" id="whatsapp-import-modal-overlay">
+    <div class="modal-container admin-product-modal">
+      <button class="close-modal-btn" id="close-whatsapp-import-btn"><i class="fa-solid fa-xmark"></i></button>
+      <div class="admin-modal-header">
+        <h3><i class="fa-brands fa-whatsapp"></i> Import WhatsApp Catalog</h3>
+        <p>Export your WhatsApp group <strong>with media</strong>, choose the ZIP here, then review the detected products before importing.</p>
+      </div>
+      <div class="form-group">
+        <label for="whatsapp-catalog-file">WhatsApp Chat ZIP</label>
+        <input type="file" id="whatsapp-catalog-file" accept=".zip,application/zip">
+        <span class="input-helper">The ZIP should include the exported chat text and product images. Maximum file size: 50MB.</span>
+      </div>
+      <div id="whatsapp-import-preview" class="whatsapp-import-preview" aria-live="polite"></div>
+      <div class="admin-modal-actions">
+        <button type="button" class="secondary-btn" id="cancel-whatsapp-import-btn">Cancel</button>
+        <button type="button" class="secondary-btn" id="preview-whatsapp-import-btn">Preview Products</button>
+        <button type="button" class="primary-btn" id="commit-whatsapp-import-btn" disabled>Import Selected</button>
+      </div>
     </div>
   </div>
 

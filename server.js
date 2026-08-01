@@ -12,6 +12,7 @@ const path = require('path');
 const mongoose = require('mongoose');
 const multer = require('multer');
 const Razorpay = require('razorpay');
+const AdmZip = require('adm-zip');
 const app = express();
 
 // ============================================================
@@ -158,6 +159,69 @@ const Product = mongoose.model('Product', productSchema);
 const Order = mongoose.model('Order', orderSchema);
 const Settings = mongoose.model('Settings', settingsSchema);
 const Review = mongoose.model('Review', reviewSchema);
+
+// Short-lived, server-side previews keep the ZIP out of the browser. Products
+// are not stored until the administrator confirms the import.
+const whatsappImportPreviews = new Map();
+
+function inferCatalogCategory(text) {
+  const value = String(text || '').toLowerCase();
+  const gender = /women|ladies|girl/.test(value) ? 'Women' : /men|gents|boy/.test(value) ? 'Men' : '';
+  if (/watch|smart ?watch|chrono|dial/.test(value)) return { category: 'Watch', subcategory: gender };
+  if (/shoe|sneaker|sandal|slipper|loafer|boot/.test(value)) return { category: 'Shoes', subcategory: gender };
+  if (/shirt|t-?shirt|dress|kurti|saree|jeans|pant|trouser|hoodie|jacket|fashion|clothing|wear/.test(value)) return { category: 'Fashion', subcategory: gender };
+  if (/gift|hamper|toy|teddy|mug/.test(value)) return { category: 'Gifts', subcategory: '' };
+  return { category: 'Gadgets', subcategory: /earbud|airpod|headphone/.test(value) ? 'Earbuds' : '' };
+}
+
+function cleanWhatsAppLine(line) {
+  return String(line || '')
+    .replace(/^\s*<attached:[^>]+>\s*$/i, '')
+    .replace(/^\s*[\u200e\u200f]/, '')
+    .trim();
+}
+
+function parseWhatsAppCatalog(zipBuffer) {
+  const zip = new AdmZip(zipBuffer);
+  const entries = zip.getEntries();
+  const textEntry = entries.find(entry => !entry.isDirectory && /\.txt$/i.test(entry.entryName));
+  if (!textEntry) throw new Error('No chat text file was found in this ZIP');
+
+  const chatText = textEntry.getData().toString('utf8').replace(/^\uFEFF/, '');
+  const imageEntries = entries.filter(entry => !entry.isDirectory && /\.(jpe?g|png|webp|gif)$/i.test(entry.entryName));
+  const blocks = chatText.split(/\r?\n(?=\[?\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4},?\s+\d{1,2}:\d{2})/);
+  const products = [];
+  let imageIndex = 0;
+
+  for (const block of blocks) {
+    const priceMatch = block.match(/(?:price|mrp|offer\s*price|rate)?\s*[:\-]?\s*(?:₹|rs\.?|inr)\s*([\d,]{2,})/i);
+    if (!priceMatch) continue;
+    const price = Number(priceMatch[1].replace(/,/g, ''));
+    if (!Number.isFinite(price) || price <= 0) continue;
+
+    const usefulLines = block.split(/\r?\n/).map(cleanWhatsAppLine).map(line => line
+      .replace(/^\[?\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\]?\s*-?\s*[^:]+:\s*/i, '')
+      .trim()).filter(Boolean);
+    const title = usefulLines.find(line => !/(?:price|mrp|offer\s*price|rate|free shipping|cash on delivery|available|contact)/i.test(line) && line.length >= 3)
+      || usefulLines.find(line => line.length >= 3)
+      || `WhatsApp product ${products.length + 1}`;
+    const description = usefulLines.filter(line => line !== title && !/^(?:₹|rs\.?|inr)\s*[\d,]+/i.test(line)).join('\n').slice(0, 1500) || 'Imported from WhatsApp catalog.';
+    const originalMatch = block.match(/(?:mrp|was|original)\s*[:\-]?\s*(?:₹|rs\.?|inr)\s*([\d,]{2,})/i);
+    const originalPrice = originalMatch ? Number(originalMatch[1].replace(/,/g, '')) : price;
+    const categoryInfo = inferCatalogCategory(`${title}\n${description}`);
+    const imageEntry = imageEntries[imageIndex++] || null;
+
+    products.push({
+      previewId: crypto.randomUUID(), title: title.slice(0, 220), price,
+      originalPrice: Math.max(price, Number.isFinite(originalPrice) ? originalPrice : price),
+      category: categoryInfo.category, subcategory: categoryInfo.subcategory,
+      description, colors: [], stock: 10,
+      imageName: imageEntry ? path.basename(imageEntry.entryName) : '',
+      imageEntryName: imageEntry ? imageEntry.entryName : ''
+    });
+  }
+  return { products, entries };
+}
 
 // ============================================================
 // Session helpers (JWT in an httpOnly cookie)
@@ -602,6 +666,88 @@ app.post('/api/admin/upload-images', requireAdmin, (req, res) => {
   });
 });
 
+// Upload a WhatsApp "Export chat with media" ZIP and return a reviewable
+// catalog preview. Nothing is written to MongoDB at this stage.
+app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, (req, res) => {
+  catalogUpload.single('catalog')(req, res, (err) => {
+    if (err) {
+      const message = err.code === 'LIMIT_FILE_SIZE' ? 'The ZIP is too large (maximum 50MB)' : (err.message || 'Upload failed');
+      return res.status(400).json({ error: message });
+    }
+    if (!req.file) return res.status(400).json({ error: 'Please choose your WhatsApp ZIP file' });
+
+    try {
+      const parsed = parseWhatsAppCatalog(req.file.buffer);
+      if (!parsed.products.length) {
+        return res.status(400).json({ error: 'No products with a price were found. Each product message needs a price such as “Price: ₹600”.' });
+      }
+      const token = crypto.randomUUID();
+      whatsappImportPreviews.set(token, { expiresAt: Date.now() + (30 * 60 * 1000), products: parsed.products, entries: parsed.entries });
+      setTimeout(() => whatsappImportPreviews.delete(token), 31 * 60 * 1000).unref?.();
+
+      res.json({
+        token,
+        products: parsed.products.map(({ imageEntryName, ...product }) => ({ ...product, hasImage: Boolean(imageEntryName) }))
+      });
+    } catch (e) {
+      console.error('WhatsApp catalog preview failed:', e);
+      res.status(400).json({ error: 'Could not read this ZIP. Export the WhatsApp chat again and choose “With Media”.' });
+    }
+  });
+});
+
+// Commit selected products from a previously created preview. The data is read
+// from the server-side preview, never from editable browser fields.
+app.post('/api/admin/import-whatsapp-catalog/commit', requireAdmin, async (req, res) => {
+  const preview = whatsappImportPreviews.get(String(req.body?.token || ''));
+  if (!preview || preview.expiresAt < Date.now()) {
+    return res.status(400).json({ error: 'This preview has expired. Please upload the ZIP again.' });
+  }
+  const selectedIds = Array.isArray(req.body?.previewIds) ? new Set(req.body.previewIds.map(String)) : null;
+  const selected = preview.products.filter(product => !selectedIds || selectedIds.has(product.previewId));
+  if (!selected.length) return res.status(400).json({ error: 'Select at least one product to import' });
+
+  try {
+    let imagesSkipped = 0;
+    const documents = selected.map((product, index) => {
+      let image = '';
+      if (product.imageEntryName) {
+        const entry = preview.entries.find(item => item.entryName === product.imageEntryName);
+        const buffer = entry?.getData();
+        if (buffer && buffer.length <= 3 * 1024 * 1024) {
+          const extension = path.extname(product.imageEntryName).toLowerCase();
+          const mime = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : extension === '.gif' ? 'image/gif' : 'image/jpeg';
+          image = `data:${mime};base64,${buffer.toString('base64')}`;
+        } else if (entry) {
+          imagesSkipped += 1;
+        }
+      }
+      return {
+        id: `p_${Date.now()}_${index}_${crypto.randomUUID().slice(0, 6)}`,
+        title: product.title,
+        category: product.category,
+        subcategory: product.subcategory,
+        price: product.price,
+        originalPrice: product.originalPrice,
+        colors: product.colors,
+        sizes: [],
+        rating: 4,
+        ratingCount: 0,
+        image,
+        images: image ? [image] : [],
+        description: product.description,
+        stock: product.stock
+      };
+    });
+    await Product.insertMany(documents);
+    whatsappImportPreviews.delete(String(req.body?.token || ''));
+    res.json({ importedCount: documents.length, imagesSkipped });
+  } catch (e) {
+    console.error('WhatsApp catalog import failed:', e);
+    res.status(500).json({ error: 'Could not import the selected products' });
+  }
+});
+
 app.post('/api/admin/products', requireAdmin, async (req, res) => {
   const p = req.body || {};
   if (!p.title || !p.category) {
@@ -953,4 +1099,15 @@ async function start() {
 start().catch(err => {
   console.error('\n[FATAL] Failed to start server:', err.message);
   process.exit(1);
+});
+
+const catalogUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!String(file.originalname || '').toLowerCase().endsWith('.zip')) {
+      return cb(new Error('Please select a WhatsApp chat ZIP file'));
+    }
+    cb(null, true);
+  }
 });
