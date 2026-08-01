@@ -1,9 +1,32 @@
 import { state } from './state.js';
-import { updateUI, openAuthModal, renderMyOrders, showToast } from './render.js';
+import { updateUI, openAuthModal, showToast } from './render.js';
 import { initCartEvents } from './cart.js';
 import { initAuthEvents } from './auth.js';
 
 // Application Controller & Initialization (Storefront)
+
+// Kept here so the essential My Orders button does not depend on an optional
+// renderer export. This also keeps a browser with a cached older render.js
+// version from preventing the entire storefront from loading.
+function renderOrdersIntoModal(orders) {
+  const container = document.getElementById('my-orders-list');
+  if (!container) return;
+  if (!orders?.length) {
+    container.innerHTML = '<div class="empty-cart-view"><i class="fa-solid fa-box-open"></i><h3>No orders yet</h3><p>Your placed orders will show up here.</p></div>';
+    return;
+  }
+  container.innerHTML = orders.map(order => `
+    <div class="table-card" style="margin-bottom:12px; padding:16px;">
+      <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
+        <strong>${String(order.id || '').toUpperCase()}</strong>
+        <span class="order-status-select ${String(order.status || 'Pending').toLowerCase()}" style="border:none; padding:2px 10px;">${order.status || 'Pending'}</span>
+      </div>
+      <div style="font-size:11px; color:var(--text-muted); margin:8px 0;">${order.date || ''}</div>
+      <div class="order-items-purchased">${(order.items || []).map(item => `<div class="order-item-line">• ${item.title} × ${item.quantity}</div>`).join('')}</div>
+      <div style="text-align:right; font-weight:700; margin-top:10px;">₹${Number(order.totalAmount || 0).toLocaleString()}</div>
+    </div>
+  `).join('');
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
   await state.initFromServer();
@@ -56,7 +79,7 @@ function setupGlobalEvents() {
       return;
     }
     const orders = await state.fetchMyOrders();
-    renderMyOrders(orders);
+    renderOrdersIntoModal(orders);
     myOrdersModalOverlay?.classList.remove('hidden');
   };
 
