@@ -35,7 +35,7 @@
   {
     "id": "p3",
     "title": "Nike Air Max Impact 4 Basketball Shoes For Men",
-    "category": "Fashion - Men",
+    "category": "Fashion",
     "price": 5945,
     "originalPrice": 8495,
     "colors": [
@@ -54,12 +54,13 @@
       "9",
       "10",
       "11"
-    ]
+    ],
+    "subcategory": "Men"
   },
   {
     "id": "p4",
     "title": "Puma Classic Solid Men Round Neck Green T-Shirt",
-    "category": "Fashion - Men",
+    "category": "Fashion",
     "price": 899,
     "originalPrice": 1799,
     "colors": [
@@ -77,12 +78,13 @@
       "M",
       "L",
       "XL"
-    ]
+    ],
+    "subcategory": "Men"
   },
   {
     "id": "p5",
     "title": "Wipro Vesta 4 Slice Automatic Grill Toaster & Maker",
-    "category": "Watch - Men",
+    "category": "Watch",
     "price": 1899,
     "originalPrice": 3299,
     "colors": [
@@ -93,12 +95,13 @@
     "ratingCount": 685,
     "image": "https://images.unsplash.com/photo-1583696959824-4d142d41f974?auto=format&fit=crop&q=80&w=600",
     "description": "Make delicious, crispy grilled sandwiches in minutes with the Wipro Vesta Grill toaster. Features non-stick coating plates, cool-touch handle, oil collector tray, and auto shut-off technology for safety and ease.",
-    "stock": 6
+    "stock": 6,
+    "subcategory": "Men"
   },
   {
     "id": "p6",
     "title": "Stylon Premium Fabric 3 Seater Sofa for Living Room",
-    "category": "Watch - Women",
+    "category": "Watch",
     "price": 15999,
     "originalPrice": 29999,
     "colors": [
@@ -110,7 +113,8 @@
     "ratingCount": 182,
     "image": "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&q=80&w=600",
     "description": "Add a touch of modern elegance to your living space. Handcrafted with high-density foam, durable fabric upholstery, and a sturdy solid wood frame, this sofa offers superior support and long-lasting durability.",
-    "stock": 4
+    "stock": 4,
+    "subcategory": "Women"
   },
   {
     "id": "p7",

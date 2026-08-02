@@ -2409,3 +2409,9 @@ a {
   border-color: var(--primary);
 }
 
+.whatsapp-import-preview {
+  max-height: 340px;
+  overflow-y: auto;
+  margin-top: 12px;
+}
+

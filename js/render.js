@@ -147,7 +147,7 @@ function renderMyOrders(orders) {
       <div class="order-items-purchased">
         ${o.items.map(item => `
           <div class="order-item-line">
-            • ${item.title} <span style="color: var(--text-muted)">(${item.color}${item.size ? `, Size: ${item.size}` : ''})</span> x ${item.quantity}
+            • ${item.title} <span style="color: var(--text-muted)">(${item.color})</span> x ${item.quantity}
           </div>
         `).join('')}
       </div>
@@ -160,11 +160,8 @@ function renderMyOrders(orders) {
 
 export function renderCategoryBar() {
   const categoryBar = document.getElementById('category-bar');
-  const subcategoryBar = document.getElementById('category-subbar');
   if (!categoryBar) return;
 
-  // Primary departments only. Gender and style belong in a product's
-  // subcategory, just as Flipkart keeps Fashion and Watches unified.
   const categories = ['All', 'Gadgets', 'Fashion', 'Watch', 'Shoes', 'Gifts'];
   const activeCategory = state.filters.category;
 
@@ -172,7 +169,7 @@ export function renderCategoryBar() {
     'All': 'fa-border-all',
     'Gadgets': 'fa-mobile-screen',
     'Fashion': 'fa-shirt',
-    'Watch': 'fa-clock',
+    'Watch': 'fa-stopwatch',
     'Shoes': 'fa-shoe-prints',
     'Gifts': 'fa-gift'
   };
@@ -190,27 +187,7 @@ export function renderCategoryBar() {
     item.addEventListener('click', () => {
       const selectedCat = item.getAttribute('data-category');
       state.setFilter('category', selectedCat);
-      state.setFilter('subcategory', 'All');
     });
-  });
-
-  if (!subcategoryBar) return;
-  const selectedCategory = state.filters.category;
-  if (!['Fashion', 'Watch'].includes(selectedCategory)) {
-    subcategoryBar.classList.add('hidden');
-    subcategoryBar.innerHTML = '';
-    return;
-  }
-
-  const options = ['All', 'Men', 'Women'];
-  subcategoryBar.classList.remove('hidden');
-  subcategoryBar.innerHTML = options.map(option => `
-    <button type="button" class="category-subitem ${state.filters.subcategory === option ? 'active' : ''}" data-subcategory="${option}">
-      ${option === 'All' ? `All ${selectedCategory}` : `${option}'s ${selectedCategory}`}
-    </button>
-  `).join('');
-  subcategoryBar.querySelectorAll('.category-subitem').forEach(button => {
-    button.addEventListener('click', () => state.setFilter('subcategory', button.dataset.subcategory));
   });
 }
 
@@ -317,13 +294,7 @@ export function renderProductsGrid() {
       e.stopPropagation();
       const pId = btn.getAttribute('data-id');
       const product = state.getProductById(pId);
-      if (!product) return;
-      if (product.sizes && product.sizes.length > 0) {
-        // Needs a size — open the detail modal so it can be selected first.
-        state.setActiveProduct(product);
-        return;
-      }
-      if (product.colors.length > 0) {
+      if (product && product.colors.length > 0) {
         const added = state.addToCart(pId, product.colors[0]);
         showToast(added ? 'Product added to cart!' : 'Product is out of stock or cart limit reached', added ? 'success' : 'error');
       }
@@ -335,12 +306,7 @@ export function renderProductsGrid() {
       e.stopPropagation();
       const pId = btn.getAttribute('data-id');
       const product = state.getProductById(pId);
-      if (!product) return;
-      if (product.sizes && product.sizes.length > 0) {
-        state.setActiveProduct(product);
-        return;
-      }
-      if (product.colors.length > 0) {
+      if (product && product.colors.length > 0) {
         state.addToCart(pId, product.colors[0]);
         document.getElementById('cart-drawer-overlay').classList.add('open');
       }
@@ -370,21 +336,12 @@ export function renderActiveProductDetails() {
     stockMessage = `<span class="detail-stock-status low-stock">Only ${product.stock} left in stock - order soon!</span>`;
   }
 
-  const galleryImages = (product.images && product.images.length > 0) ? product.images : [product.image];
-
   contentEl.innerHTML = `
     <div class="product-detail-grid">
       <div class="detail-image-panel">
         <div class="detail-img-box">
-          <img src="${galleryImages[0]}" id="main-detail-img" alt="${product.title}">
+          <img src="${product.image}" id="main-detail-img" alt="${product.title}">
         </div>
-        ${galleryImages.length > 1 ? `
-          <div class="detail-thumb-strip" id="detail-thumb-strip">
-            ${galleryImages.map((url, i) => `
-              <img src="${url}" class="detail-thumb ${i === 0 ? 'active' : ''}" data-index="${i}" alt="${product.title} photo ${i + 1}">
-            `).join('')}
-          </div>
-        ` : ''}
         <div class="detail-btn-row">
           <button class="detail-add-cart" id="modal-add-cart-btn" ${isOutOfStock ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
             <i class="fa-solid fa-cart-shopping"></i> Add to Cart
@@ -416,18 +373,6 @@ export function renderActiveProductDetails() {
             `).join('')}
           </div>
         </div>
-        ${(product.sizes && product.sizes.length > 0) ? `
-          <div class="detail-options-section">
-            <h4>Select Size:</h4>
-            <div class="color-options-row" id="detail-size-options">
-              ${product.sizes.map(sz => `
-                <button class="color-option-btn size-option-btn" data-size="${sz}">
-                  ${sz}
-                </button>
-              `).join('')}
-            </div>
-          </div>
-        ` : ''}
         <div class="detail-options-section">
           <h4>Availability:</h4>
           <div>${stockMessage}</div>
@@ -440,17 +385,8 @@ export function renderActiveProductDetails() {
     </div>
   `;
 
-  const mainImg = document.getElementById('main-detail-img');
-  contentEl.querySelectorAll('.detail-thumb').forEach(thumb => {
-    thumb.addEventListener('click', () => {
-      if (mainImg) mainImg.src = thumb.src;
-      contentEl.querySelectorAll('.detail-thumb').forEach(t => t.classList.remove('active'));
-      thumb.classList.add('active');
-    });
-  });
-
   let selectedColor = product.colors[0] || 'Default';
-  const colorBtns = contentEl.querySelectorAll('.color-option-btn:not(.size-option-btn)');
+  const colorBtns = contentEl.querySelectorAll('.color-option-btn');
   colorBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       colorBtns.forEach(b => b.classList.remove('selected'));
@@ -459,23 +395,8 @@ export function renderActiveProductDetails() {
     });
   });
 
-  const requiresSize = product.sizes && product.sizes.length > 0;
-  let selectedSize = null;
-  const sizeBtns = contentEl.querySelectorAll('.size-option-btn');
-  sizeBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      sizeBtns.forEach(b => b.classList.remove('selected'));
-      btn.classList.add('selected');
-      selectedSize = btn.getAttribute('data-size');
-    });
-  });
-
   document.getElementById('modal-add-cart-btn')?.addEventListener('click', () => {
-    if (requiresSize && !selectedSize) {
-      showToast('Please select a size', 'error');
-      return;
-    }
-    const added = state.addToCart(product.id, selectedColor, selectedSize);
+    const added = state.addToCart(product.id, selectedColor);
     if (added) {
       showToast('Product added to cart!', 'success');
       state.setActiveProduct(null);
@@ -486,11 +407,7 @@ export function renderActiveProductDetails() {
   });
 
   document.getElementById('modal-buy-now-btn')?.addEventListener('click', () => {
-    if (requiresSize && !selectedSize) {
-      showToast('Please select a size', 'error');
-      return;
-    }
-    state.addToCart(product.id, selectedColor, selectedSize);
+    state.addToCart(product.id, selectedColor);
     state.setActiveProduct(null);
     document.getElementById('cart-drawer-overlay').classList.add('open');
   });
@@ -542,7 +459,7 @@ export function renderCartDrawer() {
         </div>
         <div class="cart-item-details">
           <div class="cart-item-title" title="${product.title}">${product.title}</div>
-          <div class="cart-item-meta">Color: ${cartItem.color}${cartItem.size ? ` &nbsp;|&nbsp; Size: ${cartItem.size}` : ''}</div>
+          <div class="cart-item-meta">Color: ${cartItem.color}</div>
           <div class="cart-item-prices">
             <span class="item-price">₹${discountPrice.toLocaleString()}</span>
             ${mrpPrice > discountPrice ? `<span class="item-original-price">₹${mrpPrice.toLocaleString()}</span>` : ''}
@@ -822,7 +739,7 @@ export function renderAdminDashboard() {
           <div class="order-items-purchased">
             ${o.items.map(item => `
               <div class="order-item-line">
-                • ${item.title} <span style="color: var(--text-muted)">(${item.color}${item.size ? `, Size: ${item.size}` : ''})</span> x ${item.quantity}
+                • ${item.title} <span style="color: var(--text-muted)">(${item.color})</span> x ${item.quantity}
               </div>
             `).join('')}
           </div>
@@ -886,9 +803,9 @@ export function renderProductImagesPreview(images = []) {
 
   container.querySelectorAll('.image-gallery-thumb').forEach(thumb => {
     thumb.addEventListener('click', (e) => {
-      if (e.target.closest('.thumb-remove-btn')) return; // handled separately below
+      if (e.target.closest('.thumb-remove-btn')) return;
       const index = Number(thumb.getAttribute('data-index'));
-      if (index === 0) return; // already the cover
+      if (index === 0) return;
       const reordered = [...list];
       const [chosen] = reordered.splice(index, 1);
       reordered.unshift(chosen);
@@ -900,8 +817,7 @@ export function renderProductImagesPreview(images = []) {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const index = Number(btn.getAttribute('data-index'));
-      const remaining = list.filter((_, i) => i !== index);
-      renderProductImagesPreview(remaining);
+      renderProductImagesPreview(list.filter((_, i) => i !== index));
     });
   });
 }
@@ -923,16 +839,15 @@ export function openAdminProductModal(productId = null) {
     if (product) {
       document.getElementById('admin-form-product-id').value = product.id;
       document.getElementById('prod-title').value = product.title;
-      // Convert older entries such as "Fashion - Men" into the new
-      // Flipkart-style structure: one Fashion category plus a subcategory.
-      const [baseCategory, legacySubcategory = ''] = String(product.category || 'Gadgets').split(' - ', 2);
-      document.getElementById('prod-category').value = baseCategory;
-      document.getElementById('prod-subcategory').value = product.subcategory || legacySubcategory;
+      document.getElementById('prod-category').value = product.category;
+      const subcategoryField = document.getElementById('prod-subcategory');
+      if (subcategoryField) subcategoryField.value = product.subcategory || '';
       document.getElementById('prod-stock').value = product.stock;
       document.getElementById('prod-price').value = product.price;
       document.getElementById('prod-original-price').value = product.originalPrice;
       document.getElementById('prod-colors').value = product.colors.join(', ');
-      document.getElementById('prod-sizes').value = (product.sizes || []).join(', ');
+      const sizesField = document.getElementById('prod-sizes');
+      if (sizesField) sizesField.value = (product.sizes || []).join(', ');
       document.getElementById('prod-desc').value = product.description;
 
       const existingImages = (product.images && product.images.length > 0)
