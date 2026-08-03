@@ -3,267 +3,166 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>EasyBuy Admin</title>
-  <link rel="icon" type="image/png" href="assets/easybuy-icon.png?v=1">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="styles.css">
+  <title>EasyBuy Store - Admin Dashboard</title>
+  <style>
+    :root {
+      --bg-card: #ffffff;
+      --radius-sm: 8px;
+      --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+      --transition-normal: all 0.3s ease;
+      --primary-color: #2563eb;
+      --success-color: #16a34a;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #f3f4f6;
+      margin: 0;
+      padding: 20px;
+      color: #1f2937;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .btn {
+      padding: 10px 18px;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    .btn-primary {
+      background-color: var(--primary-color);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background-color: #1d4ed8;
+    }
+
+    .btn-success {
+      background-color: var(--success-color);
+      color: white;
+    }
+
+    .btn-success:hover {
+      background-color: #15803d;
+    }
+
+    /* Modal Styling preventing accidental backdrop clicks */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.6);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 1;
+      transition: opacity var(--transition-normal);
+      pointer-events: none; /* Disables backdrop dismiss */
+    }
+
+    .modal-container {
+      pointer-events: auto; /* Re-enables interaction inside modal */
+      background-color: var(--bg-card);
+      border-radius: var(--radius-sm);
+      width: 100%;
+      max-width: 900px;
+      max-height: 90vh;
+      overflow-y: auto;
+      position: relative;
+      box-shadow: var(--shadow-lg);
+      padding: 24px;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+
+    .modal-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin: 0;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      box-sizing: border-box;
+      font-size: 0.95rem;
+    }
+
+    textarea.form-control {
+      resize: vertical;
+      min-height: 120px;
+    }
+  </style>
 </head>
 <body>
 
-  <!-- ================= HEADER SECTION ================= -->
-  <header class="main-header">
-    <div class="header-container">
-      <div class="header-logo" id="header-logo-btn">
-        <img class="brand-logo-image" src="assets/easybuy-logo-header.png" alt="EasyBuy">
-      </div>
-      <div style="flex-grow:1;"></div>
-      <div class="header-actions">
-        <button class="header-btn login-btn hidden" id="admin-logout-btn">
-          <i class="fa-solid fa-right-from-bracket"></i> Logout
-        </button>
-      </div>
-    </div>
-  </header>
+  <div class="container">
+    <h1>EasyBuy Admin Dashboard</h1>
+    <p>Import catalog listings from WhatsApp directly into your catalog database.</p>
 
-  <main class="app-body">
-
-    <!-- ================= ADMIN LOGIN VIEW ================= -->
-    <div id="admin-login-view" class="view-container">
-      <div class="table-card" style="max-width: 400px; margin: 60px auto; padding: 32px;">
-        <div style="text-align:center; margin-bottom: 20px;">
-          <i class="fa-solid fa-lock" style="font-size: 32px; color: var(--primary);"></i>
-          <h2 style="margin-top: 12px;">Admin Login</h2>
-          <p style="font-size: 12px; color: var(--text-muted);">Authorized personnel only.</p>
+    <!-- WhatsApp Import Modal Overlay -->
+    <div class="modal-overlay">
+      <div class="modal-container">
+        <div class="modal-header">
+          <h2 class="modal-title">Import WhatsApp Catalog</h2>
         </div>
-        <form id="admin-login-form">
+
+        <div class="modal-body">
           <div class="form-group">
-            <label for="admin-username">Username</label>
-            <input type="text" id="admin-username" required autocomplete="username">
+            <label for="whatsappCatalogText">Paste Catalog Text:</label>
+            <textarea id="whatsappCatalogText" class="form-control" placeholder="Product: Nike Air Shoes&#10;Price: 1200&#10;Description: Comfortable sneakers"></textarea>
           </div>
-          <div class="form-group">
-            <label for="admin-password">Password</label>
-            <input type="password" id="admin-password" required autocomplete="current-password">
-          </div>
-          <button type="submit" class="primary-btn" style="width: 100%; justify-content: center; margin-top: 8px;">Log In</button>
-        </form>
-      </div>
-    </div>
 
-    <!-- ================= ADMIN DASHBOARD VIEW ================= -->
-    <div id="admin-view" class="view-container hidden">
-      <div class="admin-subheader">
-        <div class="admin-title">
-          <h2><i class="fa-solid fa-sliders"></i> Admin Control Panel</h2>
-          <p>Manage catalog, update prices, colors, stock, and process orders.</p>
-        </div>
-        <div class="admin-actions">
-          <button class="secondary-btn" id="admin-import-whatsapp-btn" type="button">
-            <i class="fa-brands fa-whatsapp"></i> Import WhatsApp Catalog
-          </button>
-          <button class="primary-btn" id="admin-add-product-btn">
-            <i class="fa-solid fa-plus"></i> Add New Product
-          </button>
-        </div>
-      </div>
-
-      <section class="metrics-grid" id="admin-metrics-container"></section>
-
-      <div class="admin-tabs">
-        <button class="admin-tab active" id="tab-products-btn">Manage Products</button>
-        <button class="admin-tab" id="tab-orders-btn">Manage Orders</button>
-        <button class="admin-tab" id="tab-settings-btn">Store Settings</button>
-        <button class="admin-tab" id="tab-analytics-btn">Analytics</button>
-      </div>
-
-      <div class="admin-tab-content" id="tab-products-content">
-        <div class="table-card">
-          <div class="table-header">
-            <h3>Product Inventory</h3>
-            <div class="table-search">
-              <input type="text" id="admin-product-search" placeholder="Search by name or category...">
-            </div>
+          <div style="margin-bottom: 20px;">
+            <button id="importCatalogBtn" class="btn btn-primary">Import & Scrape MRP</button>
           </div>
-          <div class="table-wrapper">
-            <table class="admin-table">
-              <thead>
-                <tr>
-                  <th>Thumbnail</th>
-                  <th>Product Details</th>
-                  <th>Category</th>
-                  <th>Price</th>
-                  <th>Stock</th>
-                  <th>Colors</th>
-                  <th>Rating</th>
-                  <th class="actions-col">Actions</th>
-                </tr>
-              </thead>
-              <tbody id="admin-products-tbody"></tbody>
-            </table>
+
+          <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+
+          <h3>Preview & Verification</h3>
+          <div id="importPreviewContainer">
+            <p style="color: #6b7280;">No products imported yet. Paste catalog text above and click "Import & Scrape MRP".</p>
+          </div>
+
+          <div style="margin-top: 20px;">
+            <button id="saveProductsBtn" class="btn btn-success" style="display: none; width: 100%;">Save Products to Store</button>
           </div>
         </div>
-      </div>
-
-      <div class="admin-tab-content hidden" id="tab-orders-content">
-        <div class="table-card">
-          <div class="table-header">
-            <h3>Customer Orders</h3>
-          </div>
-          <div class="table-wrapper">
-            <table class="admin-table">
-              <thead>
-                <tr>
-                  <th>Order ID</th>
-                  <th>Date & Time</th>
-                  <th>Customer Info</th>
-                  <th>Items Purchased</th>
-                  <th>Total Price</th>
-                  <th>Payment Type</th>
-                  <th>Order Status</th>
-                </tr>
-              </thead>
-              <tbody id="admin-orders-tbody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div class="admin-tab-content hidden" id="tab-settings-content">
-        <div class="table-card" style="max-width: 500px; margin: 20px auto; padding: 24px;">
-          <h3>Store & Payment Settings</h3>
-          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">Configure your bank account details for direct UPI customer payments.</p>
-          <form id="admin-settings-form">
-            <div class="form-group">
-              <label for="settings-payee-name">Merchant / Payee Name</label>
-              <input type="text" id="settings-payee-name" required placeholder="e.g. EasyBuy Store">
-            </div>
-            <div class="form-group">
-              <label for="settings-upi-id">Merchant UPI ID (e.g. name@bank)</label>
-              <input type="text" id="settings-upi-id" required placeholder="e.g. business@okaxis">
-              <span class="input-helper">Payments made by customers scanning the checkout QR code will go directly to the bank account linked with this UPI ID.</span>
-            </div>
-            <button type="submit" class="primary-btn" style="margin-top: 12px; width: 100%; justify-content: center;">Save Settings</button>
-          </form>
-        </div>
-      </div>
-
-      <div class="admin-tab-content hidden" id="tab-analytics-content">
-        <div class="table-card" style="padding: 24px;">
-          <div class="table-header">
-            <div>
-              <h3>Sales Analytics</h3>
-              <p class="input-helper">Live sales, order count, and average order value.</p>
-            </div>
-            <button class="secondary-btn" id="refresh-analytics-btn" type="button">
-              <i class="fa-solid fa-rotate"></i> Refresh
-            </button>
-          </div>
-          <div class="metrics-grid" id="analytics-dashboard-grid"></div>
-        </div>
-      </div>
-
-    </div>
-
-  </main>
-
-  <!-- ADMIN ADD/EDIT PRODUCT MODAL -->
-  <div class="modal-overlay hidden" id="admin-product-modal-overlay">
-    <div class="modal-container admin-product-modal">
-      <button class="close-modal-btn" id="close-admin-product-btn"><i class="fa-solid fa-xmark"></i></button>
-      <div class="admin-modal-header">
-        <h3 id="admin-modal-title">Add New Product</h3>
-        <p>Fill out the form below. Real-time preview is updated below.</p>
-      </div>
-      <form id="admin-product-form">
-        <input type="hidden" id="admin-form-product-id">
-        <div class="form-group">
-          <label for="prod-title">Product Title</label>
-          <input type="text" id="prod-title" required placeholder="e.g., Apple iPhone 15 Pro Max (256 GB) - Natural Titanium">
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="prod-category">Category</label>
-            <select id="prod-category" required>
-              <option value="Gadgets">Gadgets</option>
-              <option value="Fashion">Fashion</option>
-              <option value="Watch">Watch</option>
-              <option value="Shoes">Shoes</option>
-              <option value="Gifts">Gifts</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="prod-subcategory">Subcategory (optional)</label>
-            <input type="text" id="prod-subcategory" placeholder="e.g., Men, Women, Kids, Casual">
-          </div>
-          <div class="form-group">
-            <label for="prod-stock">Stock Quantity</label>
-            <input type="number" id="prod-stock" min="0" required placeholder="e.g., 10">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="prod-price">Selling Price (₹)</label>
-            <input type="number" id="prod-price" min="1" required placeholder="e.g., 139900">
-          </div>
-          <div class="form-group">
-            <label for="prod-original-price">Original MRP (₹)</label>
-            <input type="number" id="prod-original-price" min="1" required placeholder="e.g., 159900">
-          </div>
-        </div>
-        <div class="form-group">
-          <label for="prod-colors">Colors (Comma separated)</label>
-          <input type="text" id="prod-colors" required placeholder="e.g., Natural Titanium, White, Blue, Black">
-          <span class="input-helper">Separate multiple colors with commas. Make sure to specify at least one.</span>
-        </div>
-        <div class="form-group">
-          <label for="prod-sizes">Sizes (Comma separated, optional)</label>
-          <input type="text" id="prod-sizes" placeholder="e.g., S, M, L, XL">
-        </div>
-        <div class="form-group">
-          <label for="prod-images-file">Product Photos</label>
-          <input type="file" id="prod-images-file" multiple accept="image/png,image/jpeg,image/webp,image/gif">
-          <span class="input-helper">Select up to 6 JPG, PNG, WEBP or GIF images (3MB each). Click an uploaded photo to make it the cover.</span>
-          <input type="hidden" id="prod-images-data" value="[]">
-          <div class="image-gallery-preview" id="prod-images-preview"></div>
-        </div>
-        <div class="form-group">
-          <label for="prod-desc">Product Description</label>
-          <textarea id="prod-desc" rows="4" required placeholder="Enter key features, specifications, and dimensions."></textarea>
-        </div>
-        <div class="admin-modal-actions">
-          <button type="button" class="secondary-btn" id="btn-cancel-product">Cancel</button>
-          <button type="submit" class="primary-btn" id="btn-save-product">Save Product</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- WHATSAPP CATALOG IMPORT MODAL -->
-  <div class="modal-overlay hidden" id="whatsapp-import-modal-overlay">
-    <div class="modal-container admin-product-modal">
-      <button class="close-modal-btn" id="close-whatsapp-import-btn"><i class="fa-solid fa-xmark"></i></button>
-      <div class="admin-modal-header">
-        <h3><i class="fa-brands fa-whatsapp"></i> Import WhatsApp Catalog</h3>
-        <p>Export your WhatsApp group <strong>with media</strong>, choose the ZIP here, then review the detected products before importing.</p>
-      </div>
-      <div class="form-group">
-        <label for="whatsapp-catalog-file">WhatsApp Chat ZIP</label>
-        <input type="file" id="whatsapp-catalog-file" accept=".zip,application/zip">
-        <span class="input-helper">The ZIP should include the exported chat text and product images. Maximum file size: 50MB.</span>
-      </div>
-      <div id="whatsapp-import-preview" class="whatsapp-import-preview" aria-live="polite"></div>
-      <div class="admin-modal-actions">
-        <button type="button" class="secondary-btn" id="cancel-whatsapp-import-btn">Cancel</button>
-        <button type="button" class="secondary-btn" id="preview-whatsapp-import-btn">Preview Products</button>
-        <button type="button" class="primary-btn" id="commit-whatsapp-import-btn" disabled>Import Selected</button>
       </div>
     </div>
   </div>
 
-  <div class="toast-container" id="toast-container"></div>
-
-  <script type="module" src="js/adminApp.js"></script>
+  <script src="/admin.js"></script>
 </body>
 </html>
