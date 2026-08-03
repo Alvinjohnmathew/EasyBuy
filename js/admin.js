@@ -1,14 +1,6 @@
 import { state } from './state.js';
 import { showToast, renderProductImagesPreview, renderAdminDashboard, openAdminProductModal } from './render.js';
 
-// ============================================================
-// This module is intentionally self-contained: it re-wires the
-// product form, photo upload, and WhatsApp import UI from scratch
-// rather than assuming what admin.js/adminApp.js already did.
-// Elements are cloned before attaching listeners so any stale/
-// conflicting handlers from other scripts are stripped first.
-// ============================================================
-
 function freshElement(id) {
   const el = document.getElementById(id);
   if (!el) return null;
@@ -17,15 +9,15 @@ function freshElement(id) {
   return clone;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+// Called once by adminApp.js after a successful login / session check.
+export function initAdminEvents() {
   initPhotoUpload();
   initProductFormSave();
   initWhatsAppImport();
-
-  document.getElementById('admin-add-product-btn')?.addEventListener('click', () => {
-    openAdminProductModal(null);
-  });
-});
+  initTabs();
+  initSettingsForm();
+  loadAnalytics();
+}
 
 // ================= MULTI-PHOTO UPLOAD =================
 
@@ -120,8 +112,7 @@ function initProductFormSave() {
 
       showToast(productId ? 'Product updated successfully!' : 'Product added to inventory!', 'success');
       document.getElementById('admin-product-modal-overlay')?.classList.add('hidden');
-      await state.initAdminFromServer?.();
-      renderAdminDashboard();
+      await state.initAdminFromServer(); // refreshes state + triggers re-render via subscription
     } catch (e) {
       showToast('Failed to save product. Please check your connection.', 'error');
     } finally {
@@ -129,11 +120,7 @@ function initProductFormSave() {
     }
   });
 
-  // Cancel / close buttons for the product modal
   document.getElementById('btn-cancel-product')?.addEventListener('click', () => {
-    document.getElementById('admin-product-modal-overlay')?.classList.add('hidden');
-  });
-  document.getElementById('close-admin-product-btn')?.addEventListener('click', () => {
     document.getElementById('admin-product-modal-overlay')?.classList.add('hidden');
   });
 }
@@ -267,11 +254,116 @@ function initWhatsAppImport() {
 
       showToast(`Imported ${data.importedCount} product${data.importedCount === 1 ? '' : 's'}!${data.imagesSkipped ? ` (${data.imagesSkipped} photo(s) too large, skipped)` : ''}`, 'success');
       close();
-      await state.initAdminFromServer?.();
-      renderAdminDashboard();
+      await state.initAdminFromServer();
     } catch (e) {
       showToast('Import failed. Please check your connection.', 'error');
       commitBtn.disabled = false;
     }
   });
 }
+
+// ================= TABS =================
+
+function initTabs() {
+  const tabs = [
+    ['tab-products-btn', 'tab-products-content'],
+    ['tab-orders-btn', 'tab-orders-content'],
+    ['tab-settings-btn', 'tab-settings-content'],
+    ['tab-analytics-btn', 'tab-analytics-content']
+  ];
+
+  tabs.forEach(([btnId]) => {
+    document.getElementById(btnId)?.addEventListener('click', () => {
+      tabs.forEach(([id, contentId]) => {
+        const isActive = id === btnId;
+        document.getElementById(id)?.classList.toggle('active', isActive);
+        document.getElementById(contentId)?.classList.toggle('hidden', !isActive);
+      });
+      if (btnId === 'tab-analytics-btn') loadAnalytics();
+    });
+  });
+}
+
+// ================= SETTINGS =================
+
+function initSettingsForm() {
+  const form = document.getElementById('admin-settings-form');
+  const upiInput = document.getElementById('settings-upi-id');
+  const payeeInput = document.getElementById('settings-payee-name');
+
+  const settings = state.getPaymentSettings?.();
+  if (settings) {
+    if (upiInput) upiInput.value = settings.upiId || '';
+    if (payeeInput) payeeInput.value = settings.payeeName || '';
+  }
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payeeName = payeeInput.value.trim();
+    const upiId = upiInput.value.trim();
+
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payeeName, upiId })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to save settings', 'error');
+        return;
+      }
+      showToast('Store settings saved successfully!', 'success');
+      await state.initAdminFromServer();
+    } catch (e) {
+      showToast('Failed to save settings. Please check your connection.', 'error');
+    }
+  });
+}
+
+// ================= ANALYTICS =================
+
+async function loadAnalytics() {
+  const grid = document.getElementById('analytics-dashboard-grid');
+  if (!grid) return;
+
+  try {
+    const res = await fetch('/api/admin/analytics', { credentials: 'include' });
+    const data = await res.json();
+    if (!res.ok) {
+      grid.innerHTML = `<p class="input-helper">${data.error || 'Failed to load analytics'}</p>`;
+      return;
+    }
+
+    const avgOrderValue = data.orderCount > 0 ? (data.totalSales / data.orderCount) : 0;
+
+    grid.innerHTML = `
+      <div class="metric-card sales">
+        <div class="metric-info">
+          <h4>Total Sales</h4>
+          <div class="metric-value">₹${data.totalSales.toLocaleString()}</div>
+        </div>
+        <i class="fa-solid fa-indian-rupee-sign metric-icon"></i>
+      </div>
+      <div class="metric-card orders">
+        <div class="metric-info">
+          <h4>Total Orders</h4>
+          <div class="metric-value">${data.orderCount}</div>
+        </div>
+        <i class="fa-solid fa-box-open metric-icon"></i>
+      </div>
+      <div class="metric-card products">
+        <div class="metric-info">
+          <h4>Avg. Order Value</h4>
+          <div class="metric-value">₹${avgOrderValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+        </div>
+        <i class="fa-solid fa-chart-line metric-icon"></i>
+      </div>
+    `;
+  } catch (e) {
+    grid.innerHTML = '<p class="input-helper">Failed to load analytics. Please check your connection.</p>';
+  }
+}
+
+document.getElementById('refresh-analytics-btn')?.addEventListener('click', loadAnalytics);
