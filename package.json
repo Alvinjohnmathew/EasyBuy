@@ -4,8 +4,9 @@
   "description": "EasyBuy Shopping Website",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
-  },
+  "start": "node server.js",
+  "dev": "nodemon server.js"
+},
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -26,5 +27,8 @@
     "nodemailer": "^9.0.3",
     "razorpay": "^2.9.4",
     "sib-api-v3-sdk": "^8.5.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
   }
 }
