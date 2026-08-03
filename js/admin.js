@@ -120,8 +120,17 @@ function initProductFormSave() {
     }
   });
 
+  const productOverlay = document.getElementById('admin-product-modal-overlay');
+  
+  // Prevent closing when clicking background backdrop
+  productOverlay?.addEventListener('click', (e) => {
+    if (e.target === productOverlay) {
+      e.stopPropagation();
+    }
+  });
+
   document.getElementById('btn-cancel-product')?.addEventListener('click', () => {
-    document.getElementById('admin-product-modal-overlay')?.classList.add('hidden');
+    productOverlay?.classList.add('hidden');
   });
 }
 
@@ -158,8 +167,12 @@ function initWhatsAppImport() {
   const close = () => overlay.classList.add('hidden');
   closeBtn?.addEventListener('click', close);
   cancelBtn?.addEventListener('click', close);
+
+  // Prevent closing when clicking background backdrop
   overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) close();
+    if (e.target === overlay) {
+      e.stopPropagation();
+    }
   });
 
   previewBtn?.addEventListener('click', async () => {
