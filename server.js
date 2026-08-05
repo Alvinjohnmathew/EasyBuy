@@ -48,6 +48,7 @@ if (RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET) {
   console.warn('[WARN] RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET not set — payment routes are disabled.');
 }
 
+app.set('trust proxy', 1);
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
@@ -250,11 +251,12 @@ function parseWhatsAppCatalog(zipBuffer) {
 // ============================================================
 // Session helpers (JWT in an httpOnly cookie)
 // ============================================================
-function setSessionCookie(res, cookieName, payload, maxAgeMs) {
+function setSessionCookie(req, res, cookieName, payload, maxAgeMs) {
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: Math.floor(maxAgeMs / 1000) });
+  const secureCookie = isProd && (req.secure || req.headers['x-forwarded-proto'] === 'https');
   res.cookie(cookieName, token, {
     httpOnly: true,
-    secure: isProd,
+    secure: secureCookie,
     sameSite: 'lax',
     maxAge: maxAgeMs,
     path: '/'
@@ -607,7 +609,7 @@ app.post('/api/admin/login', (req, res) => {
     return res.status(401).json({ error: 'Invalid admin credentials' });
   }
 
-  setSessionCookie(res, ADMIN_COOKIE_NAME, { sub: 'admin', role: 'admin', name: 'Admin' }, 8 * 60 * 60 * 1000);
+  setSessionCookie(req, res, ADMIN_COOKIE_NAME, { sub: 'admin', role: 'admin', name: 'Admin' }, 8 * 60 * 60 * 1000);
   res.json({ success: true });
 });
 
