@@ -2415,3 +2415,91 @@ a {
   margin-top: 12px;
 }
 
+.whatsapp-import-list {
+  display: grid;
+  gap: 12px;
+}
+
+.wa-preview-item {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.wa-preview-label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  cursor: pointer;
+}
+
+.wa-preview-label input[type="checkbox"] {
+  margin-top: 4px;
+}
+
+.wa-preview-content {
+  display: grid;
+  gap: 8px;
+}
+
+.wa-preview-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.wa-badge {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.wa-badge.has-image {
+  background: rgba(46, 204, 113, 0.15);
+  color: var(--success);
+}
+
+.wa-badge.no-image {
+  background: rgba(231, 76, 60, 0.12);
+  color: var(--danger);
+}
+
+.wa-estimate-tag {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(241, 196, 15, 0.15);
+  color: #b9770e;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.wa-preview-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wa-preview-image {
+  max-width: 160px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.wa-preview-image img {
+  width: 100%;
+  display: block;
+}
+
+.wa-preview-description {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+

@@ -1,6 +1,8 @@
 import { state } from './state.js';
 import { showToast, renderProductImagesPreview, renderAdminDashboard, openAdminProductModal } from './render.js';
 
+const ADMIN_PRODUCT_DRAFT_KEY = 'eb_admin_product_draft';
+
 function freshElement(id) {
   const el = document.getElementById(id);
   if (!el) return null;
@@ -9,66 +11,124 @@ function freshElement(id) {
   return clone;
 }
 
-// Called once by adminApp.js after a successful login / session check.
-export function initAdminEvents() {
+function getProductDraftKey(productId) {
+  return `${ADMIN_PRODUCT_DRAFT_KEY}_${productId || 'new'}`;
+}
+
+function loadProductDraft(productId) {
+  const key = getProductDraftKey(productId);
+  try {
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveProductDraft(productId, draft) {
+  const key = getProductDraftKey(productId);
+  try {
+    localStorage.setItem(key, JSON.stringify(draft));
+  } catch (e) {
+    console.warn('Could not save product draft:', e);
+  }
+}
+
+function clearProductDraft(productId) {
+  const key = getProductDraftKey(productId);
+  try {
+    localStorage.removeItem(key);
+  } catch {}
+}
+
+function collectProductDraft(productId) {
+  const title = document.getElementById('prod-title')?.value || '';
+  const category = document.getElementById('prod-category')?.value || 'Gadgets';
+  const subcategory = document.getElementById('prod-subcategory')?.value || '';
+  const stock = document.getElementById('prod-stock')?.value || '';
+  const price = document.getElementById('prod-price')?.value || '';
+  const originalPrice = document.getElementById('prod-original-price')?.value || '';
+  const colors = document.getElementById('prod-colors')?.value || '';
+  const sizes = document.getElementById('prod-sizes')?.value || '';
+  const description = document.getElementById('prod-desc')?.value || '';
+  const images = JSON.parse(document.getElementById('prod-images-data')?.value || '[]');
+
+  saveProductDraft(productId, {
+    title,
+    category,
+    subcategory,
+    stock,
+    price,
+    originalPrice,
+    colors,
+    sizes,
+    description,
+    images
+  });
+}
+
+function initAdminEvents() {
   initPhotoUpload();
   initProductFormSave();
   initWhatsAppImport();
   initTabs();
+  initProductSearch();
   initSettingsForm();
   loadAnalytics();
 }
 
-// ================= MULTI-PHOTO UPLOAD =================
+function initProductSearch() {
+  const searchInput = document.getElementById('admin-product-search');
+  if (!searchInput) return;
 
-function initPhotoUpload() {
-  const fileInput = freshElement('prod-images-file');
-  if (!fileInput) return;
-
-  fileInput.addEventListener('change', async () => {
-    const files = Array.from(fileInput.files || []);
-    if (files.length === 0) return;
-
-    const previewBox = document.getElementById('prod-images-preview');
-    const saveBtn = document.getElementById('btn-save-product');
-    if (saveBtn) saveBtn.disabled = true;
-    if (previewBox) {
-      previewBox.insertAdjacentHTML('beforeend', `
-        <div class="image-preview-box" id="upload-in-progress-indicator">
-          <i class="fa-solid fa-spinner fa-spin" style="font-size: 20px; color: var(--primary);"></i>
-        </div>
-      `);
-    }
-
-    const formData = new FormData();
-    files.forEach(f => formData.append('images', f));
-
-    try {
-      const res = await fetch('/api/admin/upload-images', {
-        method: 'POST',
-        credentials: 'include',
-        body: formData
-      });
-      const data = await res.json();
-
-      document.getElementById('upload-in-progress-indicator')?.remove();
-
-      if (!res.ok) {
-        showToast(data.error || 'Upload failed — please try selecting the photo again', 'error');
-        return;
-      }
-      const hiddenField = document.getElementById('prod-images-data');
-      const current = JSON.parse(hiddenField?.value || '[]');
-      renderProductImagesPreview([...current, ...data.imageUrls]);
-      showToast(`${data.imageUrls.length} photo${data.imageUrls.length === 1 ? '' : 's'} uploaded — you can now save the product`, 'success');
-    } catch (e) {
-      document.getElementById('upload-in-progress-indicator')?.remove();
-      showToast('Upload failed. Please check your connection and try again.', 'error');
-    } finally {
-      if (saveBtn) saveBtn.disabled = false;
-    }
-    fileInput.value = '';
+  let timeout = null;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      renderAdminDashboard();
+    }, 150);
   });
+}
+
+// ================= MULTI-PHOTO UPLOAD =================
+function initPhotoUpload() {
+    const fileInput = document.getElementById('prod-images-file');
+    const hidden = document.getElementById('prod-images-data');
+
+    if (!fileInput || !hidden) return;
+
+    fileInput.addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
+
+        const existingImages = JSON.parse(hidden.value || '[]');
+        const newImages = [];
+
+        for (const file of files) {
+            if (!file.type.startsWith('image/')) continue;
+            if (existingImages.length + newImages.length >= 6) break;
+
+            const reader = new FileReader();
+            const base64 = await new Promise((resolve, reject) => {
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+            newImages.push(base64);
+        }
+
+        const merged = [...existingImages, ...newImages].slice(0, 6);
+        renderProductImagesPreview(merged);
+        collectProductDraft(document.getElementById('admin-form-product-id')?.value || null);
+        fileInput.value = '';
+
+        if (newImages.length > 0) {
+            showToast(`${merged.length} image(s) selected`, 'success');
+        }
+        if (existingImages.length + newImages.length > 6) {
+            showToast('You can upload up to 6 images only', 'error');
+        }
+    });
 }
 
 // ================= PRODUCT FORM SAVE (Add / Edit) =================
@@ -92,6 +152,26 @@ function initProductFormSave() {
     const description = document.getElementById('prod-desc').value.trim();
     const images = JSON.parse(document.getElementById('prod-images-data')?.value || '[]');
 
+    if (!title) {
+      showToast('Product title is required', 'error');
+      return;
+    }
+    if (!category) {
+      showToast('Product category is required', 'error');
+      return;
+    }
+    if (Number.isNaN(stock) || stock < 0) {
+      showToast('Stock quantity must be a valid number', 'error');
+      return;
+    }
+    if (Number.isNaN(price) || price <= 0) {
+      showToast('Selling price must be greater than zero', 'error');
+      return;
+    }
+    if (Number.isNaN(originalPrice) || originalPrice <= 0) {
+      showToast('Original MRP must be greater than zero', 'error');
+      return;
+    }
     if (price > originalPrice) {
       showToast('Selling price cannot exceed the original MRP price!', 'error');
       return;
@@ -127,6 +207,7 @@ function initProductFormSave() {
         return;
       }
 
+      clearProductDraft(productId || null);
       showToast(productId ? 'Product updated successfully!' : 'Product added to inventory!', 'success');
       document.getElementById('admin-product-modal-overlay')?.classList.add('hidden');
       await state.initAdminFromServer(); // refreshes state + triggers re-render via subscription
@@ -137,10 +218,15 @@ function initProductFormSave() {
     }
   });
 
+  form.addEventListener('input', () => {
+    collectProductDraft(document.getElementById('admin-form-product-id')?.value || null);
+  });
+
   document.getElementById('btn-cancel-product')?.addEventListener('click', () => {
     document.getElementById('admin-product-modal-overlay')?.classList.add('hidden');
   });
 }
+
 
 // ================= WHATSAPP CATALOG IMPORT =================
 
@@ -225,20 +311,32 @@ function initWhatsAppImport() {
     }
 
     previewContainer.innerHTML = `
-      <p class="input-helper" style="margin-bottom: 10px;">
+      <p class="input-helper" style="margin-bottom: 12px;">
         Found ${currentProducts.length} product${currentProducts.length === 1 ? '' : 's'}. Uncheck anything you don't want to import.
       </p>
-      ${currentProducts.map(p => `
-        <label class="custom-checkbox" style="display:flex; align-items:center; gap:10px; padding:10px; border:1px solid var(--border-color); border-radius:var(--radius-sm); margin-bottom:8px;">
-          <input type="checkbox" class="wa-import-checkbox" data-preview-id="${p.previewId}" checked style="position:static; opacity:1; width:16px; height:16px;">
-          <div style="flex-grow:1;">
-            <strong>${p.title}</strong>
-            <div style="font-size:12px; color:var(--text-muted);">
-              ₹${p.price.toLocaleString()} · ${p.category}${p.subcategory ? ' - ' + p.subcategory : ''} · ${p.hasImage ? 'Photo ✓' : 'No photo found'}
-            </div>
+      <div class="whatsapp-import-list">
+        ${currentProducts.map(p => `
+          <div class="wa-preview-item">
+            <label class="custom-checkbox wa-preview-label">
+              <input type="checkbox" class="wa-import-checkbox" data-preview-id="${p.previewId}" checked>
+              <span class="checkbox-checkmark"></span>
+              <div class="wa-preview-content">
+                <div class="wa-preview-header">
+                  <strong>${p.title}</strong>
+                  <span class="wa-badge ${p.hasImage ? 'has-image' : 'no-image'}">${p.hasImage ? 'Has Photo' : 'No Photo'}</span>
+                </div>
+                <div class="wa-preview-meta">
+                  ₹${p.price.toLocaleString()} · ${p.category}${p.subcategory ? ' • ' + p.subcategory : ''}
+                  ${p.originalPrice ? `· MRP ₹${p.originalPrice.toLocaleString()}` : ''}
+                  ${p.isEstimatedPrice ? '<span class="wa-estimate-tag">Estimated</span>' : ''}
+                </div>
+                ${p.imageUrl ? `<div class="wa-preview-image"><img src="${p.imageUrl}" alt="${p.title}"></div>` : ''}
+                <p class="wa-preview-description">${p.description}</p>
+              </div>
+            </label>
           </div>
-        </label>
-      `).join('')}
+        `).join('')}
+      </div>
     `;
   }
 

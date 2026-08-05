@@ -1,5 +1,21 @@
 import { state } from './state.js';
 
+const ADMIN_PRODUCT_DRAFT_KEY = 'eb_admin_product_draft';
+
+function getProductDraftKey(productId) {
+  return `${ADMIN_PRODUCT_DRAFT_KEY}_${productId || 'new'}`;
+}
+
+function loadProductDraft(productId) {
+  const key = getProductDraftKey(productId);
+  try {
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
 // DOM Rendering Module for EasyBuy
 
 // Toast notification helper
@@ -246,11 +262,12 @@ export function renderProductsGrid() {
     const discount = Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100);
     const hasDiscount = discount > 0;
     const isOutOfStock = product.stock <= 0;
+    const imageUrl = product.image || 'assets/easybuy-icon.png';
 
     return `
       <div class="product-card" data-id="${product.id}">
         <div class="product-card-image">
-          <img src="${product.image}" alt="${product.title}" loading="lazy">
+          <img src="${imageUrl}" alt="${product.title}" loading="lazy">
         </div>
         <div class="product-card-info">
           <span class="product-card-title" title="${product.title}">${product.title}</span>
@@ -340,7 +357,7 @@ export function renderActiveProductDetails() {
     <div class="product-detail-grid">
       <div class="detail-image-panel">
         <div class="detail-img-box">
-          <img src="${product.image}" id="main-detail-img" alt="${product.title}">
+          <img src="${product.image || 'assets/easybuy-icon.png'}" id="main-detail-img" alt="${product.title}">
         </div>
         <div class="detail-btn-row">
           <button class="detail-add-cart" id="modal-add-cart-btn" ${isOutOfStock ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
@@ -669,7 +686,7 @@ export function renderAdminDashboard() {
 
       return `
         <tr>
-          <td><div class="table-img"><img src="${p.image}" alt=""></div></td>
+          <td><div class="table-img"><img src="${p.image || 'assets/easybuy-icon.png'}" alt=""></div></td>
           <td>
             <div class="table-title" title="${p.title}">${p.title}</div>
             <div class="input-helper">ID: ${p.id}</div>
@@ -833,6 +850,9 @@ export function openAdminProductModal(productId = null) {
   document.getElementById('admin-form-product-id').value = '';
   renderProductImagesPreview([]);
 
+  const draft = loadProductDraft(productId);
+  let images = [];
+
   if (productId) {
     titleEl.textContent = 'Edit Product Details';
     const product = state.getProductById(productId);
@@ -850,15 +870,28 @@ export function openAdminProductModal(productId = null) {
       if (sizesField) sizesField.value = (product.sizes || []).join(', ');
       document.getElementById('prod-desc').value = product.description;
 
-      const existingImages = (product.images && product.images.length > 0)
+      images = (product.images && product.images.length > 0)
         ? product.images
         : (product.image ? [product.image] : []);
-      renderProductImagesPreview(existingImages);
     }
   } else {
     titleEl.textContent = 'Add New Product';
   }
 
+  if (draft) {
+    document.getElementById('prod-title').value = draft.title || '';
+    document.getElementById('prod-category').value = draft.category || 'Gadgets';
+    document.getElementById('prod-subcategory').value = draft.subcategory || '';
+    document.getElementById('prod-stock').value = draft.stock || '';
+    document.getElementById('prod-price').value = draft.price || '';
+    document.getElementById('prod-original-price').value = draft.originalPrice || '';
+    document.getElementById('prod-colors').value = draft.colors || '';
+    document.getElementById('prod-sizes').value = draft.sizes || '';
+    document.getElementById('prod-desc').value = draft.description || '';
+    images = Array.isArray(draft.images) ? draft.images : images;
+  }
+
+  renderProductImagesPreview(images || []);
   overlay.classList.remove('hidden');
 }
 

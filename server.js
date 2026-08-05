@@ -210,15 +210,7 @@ function parseWhatsAppCatalog(zipBuffer) {
       || `WhatsApp product ${products.length + 1}`;
     const description = usefulLines.filter(line => line !== title && !/^(?:₹|rs\.?|inr)\s*[\d,]+/i.test(line)).join('\n').slice(0, 1500) || 'Imported from WhatsApp catalog.';
     const originalMatch = block.match(/(?:mrp|was|original)\s*[:\-]?\s*(?:₹|rs\.?|inr)\s*([\d,]{2,})/i);
-    // If the chat text names an explicit MRP, apply the same +200 markup so the
-    // discount percentage shown to customers still makes sense. If no MRP was
-    // written anywhere, there's no reliable way to look up a real market price
-    // automatically — instead of guessing at a live web search (which isn't
-    // something this server can do accurately or safely), estimate a plausible
-    // MRP by marking the price up ~18% above the discounted price. This is a
-    // placeholder, not a real MRP — you should review and correct it per
-    // product after import, same as you'd review any other imported field.
-    const detectedOriginal = originalMatch ? Number(originalMatch[1].replace(/,/g, '')) + 200 : null;
+    const detectedOriginal = originalMatch ? Number(originalMatch[1].replace(/,/g, '')) : null;
     const estimatedOriginal = Math.round((price * 1.18) / 10) * 10;
     const originalPrice = Math.max(price, Number.isFinite(detectedOriginal) ? detectedOriginal : estimatedOriginal);
     const categoryInfo = inferCatalogCategory(`${title}\n${description}`);
@@ -713,13 +705,38 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, (req, res) 
       if (!parsed.products.length) {
         return res.status(400).json({ error: 'No products with a price were found. Each product message needs a price such as “Price: ₹600”.' });
       }
+
+      const products = parsed.products.map(product => {
+        let imageUrl = null;
+        if (product.imageEntryName) {
+          const entry = parsed.entries.find(entry => entry.entryName === product.imageEntryName);
+          if (entry) {
+            const buffer = entry.getData();
+            if (buffer && buffer.length <= 3 * 1024 * 1024) {
+              const ext = path.extname(entry.entryName).toLowerCase();
+              const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.gif' ? 'image/gif' : 'image/jpeg';
+              imageUrl = `data:${mime};base64,${buffer.toString('base64')}`;
+            }
+          }
+        }
+        return {
+          ...product,
+          hasImage: Boolean(product.imageEntryName),
+          imageUrl,
+          isEstimatedPrice: !/\b(mrp|original|was)\b/i.test(product.title + ' ' + product.description)
+        };
+      });
+
       const token = crypto.randomUUID();
-      whatsappImportPreviews.set(token, { expiresAt: Date.now() + (30 * 60 * 1000), products: parsed.products, entries: parsed.entries });
+      whatsappImportPreviews.set(token, { expiresAt: Date.now() + (30 * 60 * 1000), products, entries: parsed.entries });
       setTimeout(() => whatsappImportPreviews.delete(token), 31 * 60 * 1000).unref?.();
 
       res.json({
         token,
-        products: parsed.products.map(({ imageEntryName, ...product }) => ({ ...product, hasImage: Boolean(imageEntryName) }))
+        products: products.map(product => ({
+          ...product,
+          hasImage: Boolean(product.imageUrl || product.imageEntryName)
+        }))
       });
     } catch (e) {
       console.error('WhatsApp catalog preview failed:', e);
