@@ -29,6 +29,17 @@ function initPhotoUpload() {
     const files = Array.from(fileInput.files || []);
     if (files.length === 0) return;
 
+    const previewBox = document.getElementById('prod-images-preview');
+    const saveBtn = document.getElementById('btn-save-product');
+    if (saveBtn) saveBtn.disabled = true;
+    if (previewBox) {
+      previewBox.insertAdjacentHTML('beforeend', `
+        <div class="image-preview-box" id="upload-in-progress-indicator">
+          <i class="fa-solid fa-spinner fa-spin" style="font-size: 20px; color: var(--primary);"></i>
+        </div>
+      `);
+    }
+
     const formData = new FormData();
     files.forEach(f => formData.append('images', f));
 
@@ -39,16 +50,22 @@ function initPhotoUpload() {
         body: formData
       });
       const data = await res.json();
+
+      document.getElementById('upload-in-progress-indicator')?.remove();
+
       if (!res.ok) {
-        showToast(data.error || 'Upload failed', 'error');
+        showToast(data.error || 'Upload failed — please try selecting the photo again', 'error');
         return;
       }
       const hiddenField = document.getElementById('prod-images-data');
       const current = JSON.parse(hiddenField?.value || '[]');
       renderProductImagesPreview([...current, ...data.imageUrls]);
-      showToast('Photos uploaded!', 'success');
+      showToast(`${data.imageUrls.length} photo${data.imageUrls.length === 1 ? '' : 's'} uploaded — you can now save the product`, 'success');
     } catch (e) {
-      showToast('Upload failed. Please check your connection.', 'error');
+      document.getElementById('upload-in-progress-indicator')?.remove();
+      showToast('Upload failed. Please check your connection and try again.', 'error');
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
     }
     fileInput.value = '';
   });
@@ -120,17 +137,8 @@ function initProductFormSave() {
     }
   });
 
-  const productOverlay = document.getElementById('admin-product-modal-overlay');
-  
-  // Prevent closing when clicking background backdrop
-  productOverlay?.addEventListener('click', (e) => {
-    if (e.target === productOverlay) {
-      e.stopPropagation();
-    }
-  });
-
   document.getElementById('btn-cancel-product')?.addEventListener('click', () => {
-    productOverlay?.classList.add('hidden');
+    document.getElementById('admin-product-modal-overlay')?.classList.add('hidden');
   });
 }
 
@@ -167,12 +175,8 @@ function initWhatsAppImport() {
   const close = () => overlay.classList.add('hidden');
   closeBtn?.addEventListener('click', close);
   cancelBtn?.addEventListener('click', close);
-
-  // Prevent closing when clicking background backdrop
   overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) {
-      e.stopPropagation();
-    }
+    if (e.target === overlay) close();
   });
 
   previewBtn?.addEventListener('click', async () => {

@@ -192,12 +192,15 @@ function parseWhatsAppCatalog(zipBuffer) {
   const blocks = chatText.split(/\r?\n(?=\[?\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4},?\s+\d{1,2}:\d{2})/);
   const products = [];
   let imageIndex = 0;
+  const usedImageEntries = new Set();
 
   for (const block of blocks) {
     const priceMatch = block.match(/(?:price|mrp|offer\s*price|rate)?\s*[:\-]?\s*(?:₹|rs\.?|inr)\s*([\d,]{2,})/i);
     if (!priceMatch) continue;
-    const price = Number(priceMatch[1].replace(/,/g, ''));
-    if (!Number.isFinite(price) || price <= 0) continue;
+    const detectedPrice = Number(priceMatch[1].replace(/,/g, ''));
+    if (!Number.isFinite(detectedPrice) || detectedPrice <= 0) continue;
+    // Add a flat ₹200 markup on top of whatever price was written in the chat.
+    const price = detectedPrice + 200;
 
     const usefulLines = block.split(/\r?\n/).map(cleanWhatsAppLine).map(line => line
       .replace(/^\[?\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\]?\s*-?\s*[^:]+:\s*/i, '')
@@ -207,13 +210,42 @@ function parseWhatsAppCatalog(zipBuffer) {
       || `WhatsApp product ${products.length + 1}`;
     const description = usefulLines.filter(line => line !== title && !/^(?:₹|rs\.?|inr)\s*[\d,]+/i.test(line)).join('\n').slice(0, 1500) || 'Imported from WhatsApp catalog.';
     const originalMatch = block.match(/(?:mrp|was|original)\s*[:\-]?\s*(?:₹|rs\.?|inr)\s*([\d,]{2,})/i);
-    const originalPrice = originalMatch ? Number(originalMatch[1].replace(/,/g, '')) : price;
+    // If the chat text names an explicit MRP, apply the same +200 markup so the
+    // discount percentage shown to customers still makes sense. If no MRP was
+    // written anywhere, there's no reliable way to look up a real market price
+    // automatically — instead of guessing at a live web search (which isn't
+    // something this server can do accurately or safely), estimate a plausible
+    // MRP by marking the price up ~18% above the discounted price. This is a
+    // placeholder, not a real MRP — you should review and correct it per
+    // product after import, same as you'd review any other imported field.
+    const detectedOriginal = originalMatch ? Number(originalMatch[1].replace(/,/g, '')) + 200 : null;
+    const estimatedOriginal = Math.round((price * 1.18) / 10) * 10;
+    const originalPrice = Math.max(price, Number.isFinite(detectedOriginal) ? detectedOriginal : estimatedOriginal);
     const categoryInfo = inferCatalogCategory(`${title}\n${description}`);
-    const imageEntry = imageEntries[imageIndex++] || null;
+
+    // Prefer matching the image WhatsApp actually attached to this specific
+    // message (visible in the raw chat text as "<attached: filename.jpg>")
+    // over guessing by position, since messages and photos don't always
+    // interleave 1-to-1 in send order.
+    let imageEntry = null;
+    const attachedMatch = block.match(/<attached:\s*([^>]+)>/i);
+    if (attachedMatch) {
+      const attachedName = attachedMatch[1].trim().toLowerCase();
+      imageEntry = imageEntries.find(entry =>
+        !usedImageEntries.has(entry) && path.basename(entry.entryName).toLowerCase() === attachedName
+      ) || null;
+    }
+    if (!imageEntry) {
+      while (imageIndex < imageEntries.length && usedImageEntries.has(imageEntries[imageIndex])) {
+        imageIndex++;
+      }
+      imageEntry = imageEntries[imageIndex] || null;
+    }
+    if (imageEntry) usedImageEntries.add(imageEntry);
 
     products.push({
       previewId: crypto.randomUUID(), title: title.slice(0, 220), price,
-      originalPrice: Math.max(price, Number.isFinite(originalPrice) ? originalPrice : price),
+      originalPrice,
       category: categoryInfo.category, subcategory: categoryInfo.subcategory,
       description, colors: [], stock: 10,
       imageName: imageEntry ? path.basename(imageEntry.entryName) : '',

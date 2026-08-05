@@ -37,11 +37,10 @@ async function showDashboardView() {
     closeAdminProductBtn?.addEventListener('click', () => {
       adminProductModalOverlay?.classList.add('hidden');
     });
-    adminProductModalOverlay?.addEventListener('click', (e) => {
-      if (e.target === adminProductModalOverlay) {
-        adminProductModalOverlay.classList.add('hidden');
-      }
-    });
+    // Intentionally no click-outside-to-close here: this form can hold a lot
+    // of entered data (title, price, colors, sizes, uploaded photos), and an
+    // accidental click on the dark backdrop was silently discarding all of
+    // it with no warning. Closing now requires the explicit Cancel or × button.
     adminAddProductBtn?.addEventListener('click', () => {
       openAdminProductModal(null);
     });
