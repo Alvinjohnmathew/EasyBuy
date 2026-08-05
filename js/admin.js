@@ -68,8 +68,8 @@ function collectProductDraft(productId) {
 }
 
 function initAdminEvents() {
-  initPhotoUpload();
   initProductFormSave();
+  initPhotoUpload();
   initWhatsAppImport();
   initTabs();
   initProductSearch();
