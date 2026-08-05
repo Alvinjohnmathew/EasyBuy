@@ -251,9 +251,12 @@ function parseWhatsAppCatalog(zipBuffer) {
 // ============================================================
 // Session helpers (JWT in an httpOnly cookie)
 // ============================================================
-function setSessionCookie(req, res, cookieName, payload, maxAgeMs) {
+function setSessionCookie(res, cookieName, payload, maxAgeMs, req = null) {
+  if (!req && res && res.req) {
+    req = res.req;
+  }
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: Math.floor(maxAgeMs / 1000) });
-  const secureCookie = isProd && (req.secure || req.headers['x-forwarded-proto'] === 'https');
+  const secureCookie = isProd && req && (req.secure || req.headers['x-forwarded-proto'] === 'https');
   res.cookie(cookieName, token, {
     httpOnly: true,
     secure: secureCookie,
@@ -609,7 +612,7 @@ app.post('/api/admin/login', (req, res) => {
     return res.status(401).json({ error: 'Invalid admin credentials' });
   }
 
-  setSessionCookie(req, res, ADMIN_COOKIE_NAME, { sub: 'admin', role: 'admin', name: 'Admin' }, 8 * 60 * 60 * 1000);
+  setSessionCookie(res, ADMIN_COOKIE_NAME, { sub: 'admin', role: 'admin', name: 'Admin' }, 8 * 60 * 60 * 1000, req);
   res.json({ success: true });
 });
 
