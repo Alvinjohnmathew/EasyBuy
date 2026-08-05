@@ -482,3 +482,5 @@ async function loadAnalytics() {
 }
 
 document.getElementById('refresh-analytics-btn')?.addEventListener('click', loadAnalytics);
+
+export { initAdminEvents };
