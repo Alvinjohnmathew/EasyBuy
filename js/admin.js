@@ -243,6 +243,7 @@ function initWhatsAppImport() {
   const overlay = document.getElementById('whatsapp-import-modal-overlay');
   const fileInput = document.getElementById('whatsapp-catalog-file');
   const previewContainer = document.getElementById('whatsapp-import-preview');
+  const windowSelect = document.getElementById('whatsapp-import-window-days');
   const previewBtn = document.getElementById('preview-whatsapp-import-btn');
   const commitBtn = document.getElementById('commit-whatsapp-import-btn');
   const closeBtn = document.getElementById('close-whatsapp-import-btn');
@@ -285,6 +286,7 @@ function initWhatsAppImport() {
 
     const formData = new FormData();
     formData.append('catalog', file);
+    formData.append('importWindowDays', windowSelect?.value || '30');
 
     try {
       const res = await fetch('/api/admin/import-whatsapp-catalog/preview', {
@@ -324,7 +326,7 @@ function initWhatsAppImport() {
 
     previewContainer.innerHTML = `
       <p class="input-helper" style="margin-bottom: 12px;">
-        Found ${currentProducts.length} product${currentProducts.length === 1 ? '' : 's'}. Review each candidate before import.
+        Found ${currentProducts.length} product${currentProducts.length === 1 ? '' : 's'} from the selected window. Review each candidate before import.
       </p>
       <div class="whatsapp-import-list">
         ${currentProducts.map(p => `

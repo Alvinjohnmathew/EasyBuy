@@ -82,8 +82,9 @@
         <div class="table-card">
           <div class="table-header">
             <h3>Product Inventory</h3>
-            <div class="table-search">
+            <div class="table-search" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
               <input type="text" id="admin-product-search" placeholder="Search by name or category...">
+              <button class="secondary-btn small-btn hidden" id="bulk-delete-products-btn" type="button">Delete Selected</button>
             </div>
           </div>
           <div class="table-wrapper">
@@ -252,6 +253,15 @@
         <label for="whatsapp-catalog-file">WhatsApp Chat ZIP</label>
         <input type="file" id="whatsapp-catalog-file" accept=".zip,application/zip">
         <span class="input-helper">The ZIP should include the exported chat text and product images. Maximum file size: 50MB.</span>
+      </div>
+      <div class="form-group">
+        <label for="whatsapp-import-window-days">Import recent messages from the last</label>
+        <select id="whatsapp-import-window-days">
+          <option value="7">7 days</option>
+          <option value="30" selected>30 days</option>
+          <option value="60">60 days</option>
+          <option value="90">90 days</option>
+        </select>
       </div>
       <div id="whatsapp-import-preview" class="whatsapp-import-preview" aria-live="polite"></div>
       <div class="admin-modal-actions">

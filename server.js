@@ -14,6 +14,7 @@ const multer = require('multer');
 const Razorpay = require('razorpay');
 const AdmZip = require('adm-zip');
 const Tesseract = require('tesseract.js');
+const { resolveImportWindowDays, calculateDuplicateScore } = require('./importer-utils');
 const app = express();
 
 // ============================================================
@@ -967,9 +968,10 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req,
         return res.status(400).json({ error: 'No products with a price or caption were found. Each product message should contain a caption and ideally a price such as “Price: ₹600”.' });
       }
 
-      const oneMonthAgo = new Date();
-      oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
-      const existingProducts = await Product.find({ createdAt: { $gte: oneMonthAgo } }, { _id: 0, __v: 0 }).lean();
+      const importWindowDays = resolveImportWindowDays(req.body?.importWindowDays || req.query?.importWindowDays || 30);
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - importWindowDays);
+      const existingProducts = await Product.find({ createdAt: { $gte: cutoffDate } }, { _id: 0, __v: 0 }).lean();
       const products = parsed.products.map(product => {
         const imageEntries = Array.isArray(product.imageEntries) ? product.imageEntries : [];
         const imageUrls = imageEntries
@@ -979,6 +981,20 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req,
         const bestMatch = existingProducts
           .map(existing => {
             const nameSimilarity = similarityScore(product.title, existing.title || '');
+            const duplicateScore = calculateDuplicateScore(
+              {
+                title: product.title,
+                category: product.category,
+                description: product.description,
+                imageNames: imageEntries.map(entry => path.basename(entry.entryName))
+              },
+              {
+                title: existing.title || '',
+                category: existing.category || '',
+                description: existing.description || '',
+                images: Array.isArray(existing.images) ? existing.images : []
+              }
+            );
             const imageSimilarity = imageUrls.length && Array.isArray(existing.images) && existing.images.length > 0
               ? Math.max(...imageUrls.map(url => (url === existing.image ? 1 : 0)))
               : 0;
@@ -986,10 +1002,10 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req,
               ...existing,
               nameSimilarity,
               imageSimilarity,
-              score: Math.max(nameSimilarity, imageSimilarity)
+              score: Math.max(duplicateScore, nameSimilarity, imageSimilarity)
             };
           })
-          .filter(candidate => candidate.score >= 0.9)
+          .filter(candidate => candidate.score >= 0.78)
           .sort((a, b) => b.score - a.score)[0] || null;
 
         return {
@@ -1008,7 +1024,7 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req,
       whatsappImportPreviews.set(token, { expiresAt: Date.now() + (30 * 60 * 1000), products, entries: parsed.entries });
       setTimeout(() => whatsappImportPreviews.delete(token), 31 * 60 * 1000).unref?.();
 
-      res.json({ token, products });
+      res.json({ token, products, importWindowDays });
     } catch (e) {
       console.error('WhatsApp catalog preview failed:', e);
       res.status(400).json({ error: 'Could not read this ZIP. Export the WhatsApp chat again and choose “With Media”.' });
@@ -1165,6 +1181,21 @@ app.delete('/api/admin/products/:id', requireAdmin, async (req, res) => {
   } catch (e) {
     console.error('Delete product failed:', e);
     res.status(500).json({ error: 'Failed to delete product' });
+  }
+});
+
+app.post('/api/admin/products/bulk-delete', requireAdmin, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean) : [];
+    if (!ids.length) {
+      return res.status(400).json({ error: 'No products selected' });
+    }
+
+    await Product.deleteMany({ id: { $in: ids } });
+    res.json({ success: true, deletedCount: ids.length });
+  } catch (e) {
+    console.error('Bulk delete products failed:', e);
+    res.status(500).json({ error: 'Failed to delete selected products' });
   }
 });
 

@@ -623,6 +623,7 @@ export function renderAdminDashboard() {
   const productsTbody = document.getElementById('admin-products-tbody');
   const ordersTbody = document.getElementById('admin-orders-tbody');
   const metricsContainer = document.getElementById('admin-metrics-container');
+  const bulkDeleteBtn = document.getElementById('bulk-delete-products-btn');
 
   if (!productsTbody || !ordersTbody || !metricsContainer) return;
 
@@ -686,6 +687,7 @@ export function renderAdminDashboard() {
 
       return `
         <tr>
+          <td><label class="custom-checkbox"><input type="checkbox" class="product-bulk-select" value="${p.id}"><span class="checkbox-checkmark"></span></label></td>
           <td><div class="table-img"><img src="${p.image || 'assets/easybuy-icon.png'}" alt=""></div></td>
           <td>
             <div class="table-title" title="${p.title}">${p.title}</div>
@@ -708,6 +710,39 @@ export function renderAdminDashboard() {
         </tr>
       `;
     }).join('');
+
+    const selectedProductIds = new Set();
+    const updateBulkDeleteVisibility = () => {
+      const hasSelection = selectedProductIds.size > 0;
+      bulkDeleteBtn?.classList.toggle('hidden', !hasSelection);
+      bulkDeleteBtn?.toggleAttribute('disabled', !hasSelection);
+      if (bulkDeleteBtn) {
+        bulkDeleteBtn.textContent = hasSelection ? `Delete Selected (${selectedProductIds.size})` : 'Delete Selected';
+      }
+    };
+
+    productsTbody.querySelectorAll('.product-bulk-select').forEach(checkbox => {
+      checkbox.addEventListener('change', () => {
+        const id = checkbox.value;
+        if (checkbox.checked) selectedProductIds.add(id);
+        else selectedProductIds.delete(id);
+        updateBulkDeleteVisibility();
+      });
+    });
+
+    bulkDeleteBtn?.addEventListener('click', async () => {
+      const ids = Array.from(selectedProductIds);
+      if (!ids.length) return;
+      if (!confirm(`Delete ${ids.length} selected product${ids.length > 1 ? 's' : ''}?`)) return;
+      const result = await state.deleteProducts(ids);
+      if (result.ok) {
+        showToast(`Deleted ${ids.length} product${ids.length > 1 ? 's' : ''}`, 'info');
+      } else {
+        showToast(result.error, 'error');
+      }
+    });
+
+    updateBulkDeleteVisibility();
 
     productsTbody.querySelectorAll('.action-btn.edit').forEach(btn => {
       btn.addEventListener('click', () => {

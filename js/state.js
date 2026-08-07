@@ -258,6 +258,19 @@ class AppState {
     return { ok: true };
   }
 
+  async deleteProducts(ids) {
+    const res = await fetch('/api/admin/products/bulk-delete', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    });
+    const data = await res.json();
+    if (!res.ok) return { ok: false, error: data.error || 'Failed to delete selected products' };
+    await this.initAdminFromServer();
+    return { ok: true };
+  }
+
   // --- Cart Management (local only, unaffected by login state) ---
   getCart() {
     return this.cart;
