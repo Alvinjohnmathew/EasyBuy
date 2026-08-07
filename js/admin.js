@@ -230,6 +230,14 @@ function initProductFormSave() {
 
 // ================= WHATSAPP CATALOG IMPORT =================
 
+function escapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function initWhatsAppImport() {
   const openBtn = document.getElementById('admin-import-whatsapp-btn');
   const overlay = document.getElementById('whatsapp-import-modal-overlay');
@@ -293,7 +301,11 @@ function initWhatsAppImport() {
       }
 
       currentToken = data.token;
-      currentProducts = data.products;
+      currentProducts = (data.products || []).map(product => ({
+        ...product,
+        action: product.action || 'create',
+        isSelected: typeof product.isSelected === 'boolean' ? product.isSelected : !product.needsReview
+      }));
       renderWhatsAppPreview();
       commitBtn.disabled = currentProducts.length === 0;
     } catch (e) {
@@ -312,41 +324,103 @@ function initWhatsAppImport() {
 
     previewContainer.innerHTML = `
       <p class="input-helper" style="margin-bottom: 12px;">
-        Found ${currentProducts.length} product${currentProducts.length === 1 ? '' : 's'}. Uncheck anything you don't want to import.
+        Found ${currentProducts.length} product${currentProducts.length === 1 ? '' : 's'}. Review each candidate before import.
       </p>
       <div class="whatsapp-import-list">
         ${currentProducts.map(p => `
           <div class="wa-preview-item">
-            <label class="custom-checkbox wa-preview-label">
-              <input type="checkbox" class="wa-import-checkbox" data-preview-id="${p.previewId}" checked>
-              <span class="checkbox-checkmark"></span>
-              <div class="wa-preview-content">
-                <div class="wa-preview-header">
-                  <strong>${p.title}</strong>
-                  <span class="wa-badge ${p.hasImage ? 'has-image' : 'no-image'}">${p.hasImage ? 'Has Photo' : 'No Photo'}</span>
-                </div>
-                <div class="wa-preview-meta">
-                  ₹${p.price.toLocaleString()} · ${p.category}${p.subcategory ? ' • ' + p.subcategory : ''}
-                  ${p.originalPrice ? `· MRP ₹${p.originalPrice.toLocaleString()}` : ''}
-                  ${p.isEstimatedPrice ? '<span class="wa-estimate-tag">Estimated</span>' : ''}
-                </div>
-                ${p.imageUrl ? `<div class="wa-preview-image"><img src="${p.imageUrl}" alt="${p.title}"></div>` : ''}
-                <p class="wa-preview-description">${p.description}</p>
+            <div class="wa-preview-controls">
+              <label class="custom-checkbox wa-preview-label">
+                <input type="checkbox" class="wa-import-checkbox" data-preview-id="${p.previewId}" ${p.isSelected !== false ? 'checked' : ''}>
+                <span class="checkbox-checkmark"></span>
+              </label>
+              <div class="wa-preview-actions">
+                <button class="secondary-btn wa-edit-btn" type="button" data-preview-id="${p.previewId}">Edit</button>
+                <button class="secondary-btn wa-delete-btn" type="button" data-preview-id="${p.previewId}">Delete</button>
               </div>
-            </label>
+            </div>
+            <div class="wa-preview-content">
+              <div class="wa-preview-header">
+                <strong>${escapeHtml(p.title || 'Untitled product')}</strong>
+                <span class="wa-badge ${p.hasImage ? 'has-image' : 'no-image'}">${p.hasImage ? 'Has Photo' : 'No Photo'}</span>
+              </div>
+              <div class="wa-preview-meta">
+                ${p.price ? `Selling ₹${Number(p.price).toLocaleString()}` : 'Price pending'} · ${escapeHtml(p.category || 'Accessories')}${p.subcategory ? ' • ' + escapeHtml(p.subcategory) : ''}
+                ${p.originalPrice ? `· MRP ₹${Number(p.originalPrice).toLocaleString()}` : ''}
+                ${p.isEstimatedPrice ? '<span class="wa-estimate-tag">Estimated</span>' : ''}
+              </div>
+              <div class="wa-preview-action-row">
+                <label class="wa-action-field">
+                  <span>Action</span>
+                  <select class="wa-action-select" data-preview-id="${p.previewId}">
+                    <option value="create" ${p.action === 'create' ? 'selected' : ''}>Create New</option>
+                    <option value="update" ${p.action === 'update' ? 'selected' : ''}>Update Existing</option>
+                    <option value="skip" ${p.action === 'skip' ? 'selected' : ''}>Skip</option>
+                  </select>
+                </label>
+                ${p.needsReview ? '<span class="wa-review-tag">Needs Manual Review</span>' : ''}
+                ${p.duplicateMatch ? `<span class="wa-review-tag">Duplicate match: ${escapeHtml(p.duplicateMatch.title || p.duplicateMatch.id)}</span>` : ''}
+              </div>
+              ${p.imageUrl ? `<div class="wa-preview-image"><img src="${p.imageUrl}" alt="${escapeHtml(p.title || 'product')}"></div>` : ''}
+              <p class="wa-preview-description">${escapeHtml(p.description || '')}</p>
+            </div>
           </div>
         `).join('')}
       </div>
     `;
+
+    previewContainer.querySelectorAll('.wa-edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const previewId = btn.getAttribute('data-preview-id');
+        const product = currentProducts.find(item => item.previewId === previewId);
+        if (!product) return;
+        const nextTitle = window.prompt('Edit product title', product.title || '');
+        if (nextTitle !== null) {
+          product.title = nextTitle.trim() || product.title;
+          renderWhatsAppPreview();
+        }
+      });
+    });
+
+    previewContainer.querySelectorAll('.wa-delete-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const previewId = btn.getAttribute('data-preview-id');
+        currentProducts = currentProducts.filter(item => item.previewId !== previewId);
+        renderWhatsAppPreview();
+        commitBtn.disabled = currentProducts.length === 0;
+      });
+    });
+
+    previewContainer.querySelectorAll('.wa-action-select').forEach(select => {
+      select.addEventListener('change', (e) => {
+        const previewId = e.target.getAttribute('data-preview-id');
+        const product = currentProducts.find(item => item.previewId === previewId);
+        if (!product) return;
+        product.action = e.target.value;
+        if (product.action === 'skip') {
+          product.isSelected = false;
+        } else {
+          product.isSelected = true;
+        }
+        renderWhatsAppPreview();
+      });
+    });
+
+    previewContainer.querySelectorAll('.wa-import-checkbox').forEach(checkbox => {
+      checkbox.addEventListener('change', (e) => {
+        const previewId = e.target.getAttribute('data-preview-id');
+        const product = currentProducts.find(item => item.previewId === previewId);
+        if (!product) return;
+        product.isSelected = e.target.checked;
+      });
+    });
   }
 
   commitBtn?.addEventListener('click', async () => {
     if (!currentToken) return;
 
-    const selectedIds = Array.from(previewContainer.querySelectorAll('.wa-import-checkbox:checked'))
-      .map(cb => cb.getAttribute('data-preview-id'));
-
-    if (selectedIds.length === 0) {
+    const selectedProducts = currentProducts.filter(product => product.isSelected !== false && product.action !== 'skip');
+    if (selectedProducts.length === 0) {
       showToast('Select at least one product to import', 'error');
       return;
     }
@@ -357,7 +431,7 @@ function initWhatsAppImport() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: currentToken, previewIds: selectedIds })
+        body: JSON.stringify({ token: currentToken, previewProducts: currentProducts })
       });
       const data = await res.json();
 

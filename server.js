@@ -13,6 +13,7 @@ const mongoose = require('mongoose');
 const multer = require('multer');
 const Razorpay = require('razorpay');
 const AdmZip = require('adm-zip');
+const Tesseract = require('tesseract.js');
 const app = express();
 
 // ============================================================
@@ -169,10 +170,17 @@ function inferCatalogCategory(text) {
   const value = String(text || '').toLowerCase();
   const gender = /women|ladies|girl/.test(value) ? 'Women' : /men|gents|boy/.test(value) ? 'Men' : '';
   if (/watch|smart ?watch|chrono|dial/.test(value)) return { category: 'Watch', subcategory: gender };
-  if (/shoe|sneaker|sandal|slipper|loafer|boot/.test(value)) return { category: 'Shoes', subcategory: gender };
-  if (/shirt|t-?shirt|dress|kurti|saree|jeans|pant|trouser|hoodie|jacket|fashion|clothing|wear/.test(value)) return { category: 'Fashion', subcategory: gender };
-  if (/gift|hamper|toy|teddy|mug/.test(value)) return { category: 'Gifts', subcategory: '' };
-  return { category: 'Gadgets', subcategory: /earbud|airpod|headphone/.test(value) ? 'Earbuds' : '' };
+  if (/shoe|sneaker|sandal|slipper|loafer|boot|heels|footwear/.test(value)) return { category: 'Shoes', subcategory: gender };
+  if (/shirt|t-?shirt|dress|kurti|saree|jeans|pant|trouser|hoodie|jacket|fashion|clothing|wear|top|blouse|lehenga/.test(value)) return { category: 'Fashion', subcategory: gender };
+  if (/earbud|airpod|headphone|wireless|bluetooth|speaker|earphones|buds|neckband/.test(value)) return { category: 'Earbuds', subcategory: '' };
+  if (/speaker|soundbar|woofer|bluetooth speaker/.test(value)) return { category: 'Speakers', subcategory: '' };
+  if (/laptop|notebook|macbook|keyboard|mouse|monitor|desktop/.test(value)) return { category: 'Laptop', subcategory: '' };
+  if (/mobile|iphone|android|smartphone|phone|tablet/.test(value)) return { category: 'Mobiles', subcategory: '' };
+  if (/gift|hamper|toy|teddy|mug|decor/.test(value)) return { category: 'Gifts', subcategory: '' };
+  if (/kitchen|cooker|mixer|blender|pressure cooker|utensil/.test(value)) return { category: 'Kitchen', subcategory: '' };
+  if (/beauty|makeup|lipstick|skincare|serum|face|cream|perfume/.test(value)) return { category: 'Beauty', subcategory: '' };
+  if (/home appliance|fan|iron|heater|vacuum|mixer|washing|refrigerator/.test(value)) return { category: 'Home Appliances', subcategory: '' };
+  return { category: 'Accessories', subcategory: '' };
 }
 
 function cleanWhatsAppLine(line) {
@@ -182,7 +190,225 @@ function cleanWhatsAppLine(line) {
     .trim();
 }
 
-function parseWhatsAppCatalog(zipBuffer) {
+function normalizeText(value) {
+  return String(value || '')
+    .replace(/\u2019|\u2018/g, "'")
+    .replace(/[^a-zA-Z0-9\u20b9₹%+/\-.,()\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function safeTitleCandidate(text, fallback) {
+  const cleaned = String(text || '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => line.replace(/^(?:⭐|✨|🔷|📦|📱|🎧|👟|👕|🛍️|💄|🛒|🔥)\s*/u, ''))
+    .filter(line => !/^(?:buy|get|price|mrp|offer|free shipping|cash on delivery|high quality|new type c|available|contact|whatsapp)/i.test(line))
+    .find(line => line.length >= 3);
+  const fallbackCandidate = cleaned || String(text || '').trim() || fallback;
+  return fallbackCandidate.replace(/^\s*(?:product|item|new|latest)\s+/i, '').slice(0, 220);
+}
+
+function extractPriceValue(text) {
+  const value = String(text || '');
+  const priceMatch = value.match(/(?:price|selling price|offer price|rate|mrp|was|original)\s*[:\-]?\s*(?:₹|rs\.?|inr)?\s*([0-9][0-9,]*)/i)
+    || value.match(/(?:₹|rs\.?|inr)\s*([0-9][0-9,]*)/i)
+    || value.match(/\b([0-9]{2,6})\b/);
+  if (!priceMatch) return null;
+  const maybeNumber = Number(String(priceMatch[1]).replace(/,/g, ''));
+  return Number.isFinite(maybeNumber) && maybeNumber > 0 ? maybeNumber : null;
+}
+
+function calculateSellingPrice(rawPrice) {
+  if (!rawPrice) return null;
+  const numericPrice = Number(rawPrice);
+  return Number.isFinite(numericPrice) && numericPrice > 0 ? numericPrice + 200 : null;
+}
+
+function calculateOriginalPrice(sellingPrice, rawPrice) {
+  if (!sellingPrice) return null;
+  const base = rawPrice && Number(rawPrice) > sellingPrice ? Number(rawPrice) : sellingPrice;
+  const estimated = Math.max(sellingPrice, Math.round((sellingPrice * 1.35) / 10) * 10);
+  return Math.max(base, estimated);
+}
+
+function estimateNameConfidence(title, caption, imageNames) {
+  const text = `${title || ''}\n${caption || ''}\n${(imageNames || []).join(' ')}`;
+  const normalized = normalizeText(text).toLowerCase();
+  let confidence = 0.4;
+  if ((title || '').trim().length >= 6) confidence += 0.2;
+  if (/\b(airpods|earbuds|watch|speaker|laptop|mobile|iphone|shoe|dress|shirt|beauty|mixer|fan|lamp|headphone|smart|wireless)\b/.test(normalized)) confidence += 0.2;
+  if ((caption || '').split(/\s+/).filter(Boolean).length >= 5) confidence += 0.1;
+  if ((imageNames || []).length > 0) confidence += 0.1;
+  return Math.min(0.98, confidence);
+}
+
+async function extractTextFromImage(entry) {
+  try {
+    if (!entry || typeof entry.getData !== 'function') return '';
+    const buffer = entry.getData();
+    const imagePath = `data:${getImageMime(entry.entryName)};base64,${buffer.toString('base64')}`;
+    const result = await Tesseract.recognize(imagePath, 'eng', { logger: () => {} });
+    return String(result.data?.text || '').trim();
+  } catch (error) {
+    return '';
+  }
+}
+
+function buildDescription(lines, title, priceLine) {
+  const filtered = (lines || [])
+    .map(cleanWhatsAppLine)
+    .filter(Boolean)
+    .filter(line => line !== title)
+    .filter(line => !/^(?:price|selling price|offer price|mrp|rate|free shipping|cash on delivery|available|contact|whatsapp)/i.test(line))
+    .filter(line => !/^(?:₹|rs\.?|inr)\s*[0-9,]+/i.test(line));
+  const joined = filtered.join('\n').trim();
+  return joined || (priceLine ? 'Imported from WhatsApp catalog.' : 'Imported from WhatsApp catalog.');
+}
+
+function splitWhatsAppMessages(chatText) {
+  const lines = String(chatText || '').replace(/\r/g, '').split('\n');
+  const messages = [];
+  let current = null;
+
+  for (const line of lines) {
+    const messageMatch = line.match(/^\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\s*(?:-|–|—)\s*(.+)$/i);
+    if (messageMatch) {
+      if (current) messages.push(current);
+      current = {
+        text: messageMatch[1].trim(),
+        attachments: [],
+        raw: line
+      };
+      continue;
+    }
+
+    if (current) {
+      current.text = `${current.text}\n${line}`.trim();
+      current.raw = `${current.raw}\n${line}`;
+    }
+  }
+
+  if (current) messages.push(current);
+  return messages;
+}
+
+function getImageMime(entryName) {
+  const ext = path.extname(entryName || '').toLowerCase();
+  if (ext === '.png') return 'image/png';
+  if (ext === '.webp') return 'image/webp';
+  if (ext === '.gif') return 'image/gif';
+  return 'image/jpeg';
+}
+
+function toDataUri(buffer, entryName) {
+  if (!buffer) return null;
+  return `data:${getImageMime(entryName)};base64,${buffer.toString('base64')}`;
+}
+
+function normalizeAttachmentName(name) {
+  return String(name || '').trim().toLowerCase().replace(/\s+/g, '');
+}
+
+function findMatchingImageEntry(entry, attachedName) {
+  const target = normalizeAttachmentName(attachedName);
+  const sourceName = normalizeAttachmentName(path.basename(entry.entryName));
+  return sourceName === target || sourceName.includes(target) || target.includes(sourceName);
+}
+
+async function extractProductDetails(group, index) {
+  const caption = String(group.caption || '').trim();
+  const imageEntries = Array.isArray(group.imageEntries) ? group.imageEntries : [];
+  const imageNames = imageEntries.map(entry => path.basename(entry.entryName));
+  const fallbackTitle = `WhatsApp product ${index + 1}`;
+  const title = safeTitleCandidate(caption || imageNames.join(' '), fallbackTitle);
+  const rawPrice = extractPriceValue(caption);
+  const sellingPrice = calculateSellingPrice(rawPrice);
+  const originalPrice = calculateOriginalPrice(sellingPrice, rawPrice);
+  const categoryInfo = inferCatalogCategory(`${title}\n${caption}`);
+  const description = buildDescription(caption.split(/\r?\n/), title, rawPrice);
+  const nameConfidence = estimateNameConfidence(title, caption, imageNames);
+  const needsReview = !sellingPrice || nameConfidence < 0.7 || !title || title === fallbackTitle;
+
+  let imageText = '';
+  if (imageEntries.length && !caption) {
+    imageText = (await Promise.all(imageEntries.map(entry => extractTextFromImage(entry)))).join('\n').trim();
+  }
+  const combinedCaption = [caption, imageText].filter(Boolean).join('\n').trim();
+  const combinedTitle = safeTitleCandidate(combinedCaption || imageNames.join(' '), fallbackTitle);
+  const combinedPrice = extractPriceValue(combinedCaption) || rawPrice;
+  const combinedSellingPrice = calculateSellingPrice(combinedPrice);
+  const combinedOriginalPrice = calculateOriginalPrice(combinedSellingPrice, combinedPrice);
+  const combinedCategoryInfo = inferCatalogCategory(`${combinedTitle}\n${combinedCaption}`);
+  const combinedDescription = buildDescription(combinedCaption.split(/\r?\n/), combinedTitle, combinedPrice);
+
+  const product = {
+    previewId: crypto.randomUUID(),
+    title: combinedTitle.slice(0, 220),
+    price: combinedSellingPrice || sellingPrice,
+    originalPrice: combinedOriginalPrice || originalPrice,
+    category: combinedCategoryInfo.category,
+    subcategory: combinedCategoryInfo.subcategory,
+    description: combinedDescription || description,
+    colors: [],
+    stock: 10,
+    imageEntries: imageEntries,
+    imageName: imageNames[0] || '',
+    imageEntryNames: imageNames,
+    sourceText: caption,
+    nameConfidence,
+    needsReview,
+    hasImage: (group.imageEntries || []).length > 0,
+    action: 'create',
+    isSelected: !needsReview
+  };
+
+  if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.length > 10 && combinedCaption) {
+    try {
+      const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        temperature: 0.2,
+        messages: [{
+          role: 'system',
+          content: 'You extract structured e-commerce product data from WhatsApp chat captions. Return concise JSON with title, description, category, and priceNumber. Use null for missing values. Do not invent a price.'
+        }, {
+          role: 'user',
+          content: `Caption:\n${combinedCaption}\n\nImage names:\n${imageNames.join(', ') || 'none'}`
+        }],
+        response_format: { type: 'json_object' }
+      }, {
+        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }
+      });
+      const payload = response.data?.choices?.[0]?.message?.content;
+      if (payload) {
+        const parsed = JSON.parse(payload);
+        const aiTitle = String(parsed.title || '').trim();
+        const aiDescription = String(parsed.description || '').trim();
+        const aiCategory = String(parsed.category || '').trim();
+        const aiPrice = parsed.priceNumber ? Number(parsed.priceNumber) : null;
+        if (aiTitle) product.title = aiTitle.slice(0, 220);
+        if (aiDescription) product.description = aiDescription.slice(0, 1800);
+        if (aiCategory) {
+          product.category = aiCategory;
+          product.subcategory = '';
+        }
+        if (aiPrice) {
+          product.price = calculateSellingPrice(aiPrice);
+          product.originalPrice = calculateOriginalPrice(product.price, aiPrice);
+          product.needsReview = false;
+          product.isSelected = true;
+        }
+      }
+    } catch (error) {
+      console.warn('Optional AI extraction skipped:', error.message);
+    }
+  }
+
+  return product;
+}
+
+async function parseWhatsAppCatalog(zipBuffer) {
   const zip = new AdmZip(zipBuffer);
   const entries = zip.getEntries();
   const textEntry = entries.find(entry => !entry.isDirectory && /\.txt$/i.test(entry.entryName));
@@ -190,61 +416,51 @@ function parseWhatsAppCatalog(zipBuffer) {
 
   const chatText = textEntry.getData().toString('utf8').replace(/^\uFEFF/, '');
   const imageEntries = entries.filter(entry => !entry.isDirectory && /\.(jpe?g|png|webp|gif)$/i.test(entry.entryName));
-  const blocks = chatText.split(/\r?\n(?=\[?\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4},?\s+\d{1,2}:\d{2})/);
+  const messages = splitWhatsAppMessages(chatText);
   const products = [];
-  let imageIndex = 0;
   const usedImageEntries = new Set();
+  let pendingImages = [];
 
-  for (const block of blocks) {
-    const priceMatch = block.match(/(?:price|mrp|offer\s*price|rate)?\s*[:\-]?\s*(?:₹|rs\.?|inr)\s*([\d,]{2,})/i);
-    if (!priceMatch) continue;
-    const detectedPrice = Number(priceMatch[1].replace(/,/g, ''));
-    if (!Number.isFinite(detectedPrice) || detectedPrice <= 0) continue;
-    // Add a flat ₹200 markup on top of whatever price was written in the chat.
-    const price = detectedPrice + 200;
+  for (const [index, message] of messages.entries()) {
+    const rawText = String(message.text || '');
+    const attachmentMatches = [...rawText.matchAll(/<attached:\s*([^>]+)>/gi)].map(match => match[1]);
+    const matchedImages = [];
 
-    const usefulLines = block.split(/\r?\n/).map(cleanWhatsAppLine).map(line => line
-      .replace(/^\[?\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\]?\s*-?\s*[^:]+:\s*/i, '')
-      .trim()).filter(Boolean);
-    const title = usefulLines.find(line => !/(?:price|mrp|offer\s*price|rate|free shipping|cash on delivery|available|contact)/i.test(line) && line.length >= 3)
-      || usefulLines.find(line => line.length >= 3)
-      || `WhatsApp product ${products.length + 1}`;
-    const description = usefulLines.filter(line => line !== title && !/^(?:₹|rs\.?|inr)\s*[\d,]+/i.test(line)).join('\n').slice(0, 1500) || 'Imported from WhatsApp catalog.';
-    const originalMatch = block.match(/(?:mrp|was|original)\s*[:\-]?\s*(?:₹|rs\.?|inr)\s*([\d,]{2,})/i);
-    const detectedOriginal = originalMatch ? Number(originalMatch[1].replace(/,/g, '')) : null;
-    const estimatedOriginal = Math.round((price * 1.18) / 10) * 10;
-    const originalPrice = Math.max(price, Number.isFinite(detectedOriginal) ? detectedOriginal : estimatedOriginal);
-    const categoryInfo = inferCatalogCategory(`${title}\n${description}`);
-
-    // Prefer matching the image WhatsApp actually attached to this specific
-    // message (visible in the raw chat text as "<attached: filename.jpg>")
-    // over guessing by position, since messages and photos don't always
-    // interleave 1-to-1 in send order.
-    let imageEntry = null;
-    const attachedMatch = block.match(/<attached:\s*([^>]+)>/i);
-    if (attachedMatch) {
-      const attachedName = attachedMatch[1].trim().toLowerCase();
-      imageEntry = imageEntries.find(entry =>
-        !usedImageEntries.has(entry) && path.basename(entry.entryName).toLowerCase() === attachedName
-      ) || null;
-    }
-    if (!imageEntry) {
-      while (imageIndex < imageEntries.length && usedImageEntries.has(imageEntries[imageIndex])) {
-        imageIndex++;
+    for (const attachedName of attachmentMatches) {
+      const imageEntry = imageEntries.find(entry => !usedImageEntries.has(entry) && findMatchingImageEntry(entry, attachedName));
+      if (imageEntry) {
+        matchedImages.push(imageEntry);
+        usedImageEntries.add(imageEntry);
       }
-      imageEntry = imageEntries[imageIndex] || null;
     }
-    if (imageEntry) usedImageEntries.add(imageEntry);
 
-    products.push({
-      previewId: crypto.randomUUID(), title: title.slice(0, 220), price,
-      originalPrice,
-      category: categoryInfo.category, subcategory: categoryInfo.subcategory,
-      description, colors: [], stock: 10,
-      imageName: imageEntry ? path.basename(imageEntry.entryName) : '',
-      imageEntryName: imageEntry ? imageEntry.entryName : ''
-    });
+    const textLines = rawText
+      .split(/\r?\n/)
+      .map(cleanWhatsAppLine)
+      .filter(Boolean)
+      .filter(line => !/<attached:/i.test(line));
+    const caption = textLines.filter(Boolean).join('\n').trim();
+    const hasCaption = Boolean(caption);
+
+    if (matchedImages.length) {
+      pendingImages.push(...matchedImages);
+    }
+
+    if (hasCaption || pendingImages.length) {
+      const attachedImages = pendingImages.length ? pendingImages : matchedImages;
+      const group = {
+        caption,
+        imageEntries: attachedImages.slice(0, 8)
+      };
+      if (group.imageEntries.length) {
+        pendingImages = [];
+      }
+      if (group.caption || group.imageEntries.length) {
+        products.push(await extractProductDetails(group, products.length));
+      }
+    }
   }
+
   return { products, entries };
 }
 
@@ -320,6 +536,21 @@ function computeOrderItems(items, products) {
   }
   const totalAmount = orderItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
   return { orderItems, totalAmount };
+}
+
+function similarityScore(a, b) {
+  const first = String(a || '').trim().toLowerCase();
+  const second = String(b || '').trim().toLowerCase();
+  if (!first || !second) return 0;
+  if (first === second) return 1;
+  const tokensA = new Set(first.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(Boolean));
+  const tokensB = new Set(second.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(Boolean));
+  let overlap = 0;
+  for (const token of tokensA) {
+    if (tokensB.has(token)) overlap += 1;
+  }
+  const combined = Math.max(tokensA.size, tokensB.size);
+  return combined === 0 ? 0 : overlap / combined;
 }
 
 // ============================================================
@@ -697,8 +928,8 @@ app.post('/api/admin/upload-images', requireAdmin, (req, res) => {
 
 // Upload a WhatsApp "Export chat with media" ZIP and return a reviewable
 // catalog preview. Nothing is written to MongoDB at this stage.
-app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, (req, res) => {
-  catalogUpload.single('catalog')(req, res, (err) => {
+app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req, res) => {
+  catalogUpload.single('catalog')(req, res, async (err) => {
     if (err) {
       const message = err.code === 'LIMIT_FILE_SIZE' ? 'The ZIP is too large (maximum 50MB)' : (err.message || 'Upload failed');
       return res.status(400).json({ error: message });
@@ -706,28 +937,42 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, (req, res) 
     if (!req.file) return res.status(400).json({ error: 'Please choose your WhatsApp ZIP file' });
 
     try {
-      const parsed = parseWhatsAppCatalog(req.file.buffer);
+      const parsed = await parseWhatsAppCatalog(req.file.buffer);
       if (!parsed.products.length) {
-        return res.status(400).json({ error: 'No products with a price were found. Each product message needs a price such as “Price: ₹600”.' });
+        return res.status(400).json({ error: 'No products with a price or caption were found. Each product message should contain a caption and ideally a price such as “Price: ₹600”.' });
       }
 
+      const existingProducts = await Product.find({}, { _id: 0, __v: 0 }).lean();
       const products = parsed.products.map(product => {
-        let imageUrl = null;
-        if (product.imageEntryName) {
-          const entry = parsed.entries.find(entry => entry.entryName === product.imageEntryName);
-          if (entry) {
-            const buffer = entry.getData();
-            if (buffer && buffer.length <= 3 * 1024 * 1024) {
-              const ext = path.extname(entry.entryName).toLowerCase();
-              const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.gif' ? 'image/gif' : 'image/jpeg';
-              imageUrl = `data:${mime};base64,${buffer.toString('base64')}`;
-            }
-          }
-        }
+        const imageEntries = Array.isArray(product.imageEntries) ? product.imageEntries : [];
+        const imageUrls = imageEntries
+          .map(entry => toDataUri(entry.getData ? entry.getData() : null, entry.entryName))
+          .filter(Boolean);
+        const primaryImage = imageUrls[0] || null;
+        const bestMatch = existingProducts
+          .map(existing => {
+            const nameSimilarity = similarityScore(product.title, existing.title || '');
+            const imageSimilarity = imageUrls.length && Array.isArray(existing.images) && existing.images.length > 0
+              ? Math.max(...imageUrls.map(url => (url === existing.image ? 1 : 0)))
+              : 0;
+            return {
+              ...existing,
+              nameSimilarity,
+              imageSimilarity,
+              score: Math.max(nameSimilarity, imageSimilarity)
+            };
+          })
+          .filter(candidate => candidate.score >= 0.9)
+          .sort((a, b) => b.score - a.score)[0] || null;
+
         return {
           ...product,
-          hasImage: Boolean(product.imageEntryName),
-          imageUrl,
+          hasImage: Boolean(primaryImage || imageUrls.length),
+          imageUrl: primaryImage,
+          imageUrls,
+          duplicateMatch: bestMatch ? { id: bestMatch.id, title: bestMatch.title, score: bestMatch.score } : null,
+          action: bestMatch ? 'update' : 'create',
+          isSelected: !product.needsReview,
           isEstimatedPrice: !/\b(mrp|original|was)\b/i.test(product.title + ' ' + product.description)
         };
       });
@@ -736,13 +981,7 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, (req, res) 
       whatsappImportPreviews.set(token, { expiresAt: Date.now() + (30 * 60 * 1000), products, entries: parsed.entries });
       setTimeout(() => whatsappImportPreviews.delete(token), 31 * 60 * 1000).unref?.();
 
-      res.json({
-        token,
-        products: products.map(product => ({
-          ...product,
-          hasImage: Boolean(product.imageUrl || product.imageEntryName)
-        }))
-      });
+      res.json({ token, products });
     } catch (e) {
       console.error('WhatsApp catalog preview failed:', e);
       res.status(400).json({ error: 'Could not read this ZIP. Export the WhatsApp chat again and choose “With Media”.' });
@@ -757,43 +996,67 @@ app.post('/api/admin/import-whatsapp-catalog/commit', requireAdmin, async (req, 
   if (!preview || preview.expiresAt < Date.now()) {
     return res.status(400).json({ error: 'This preview has expired. Please upload the ZIP again.' });
   }
-  const selectedIds = Array.isArray(req.body?.previewIds) ? new Set(req.body.previewIds.map(String)) : null;
-  const selected = preview.products.filter(product => !selectedIds || selectedIds.has(product.previewId));
+
+  const incomingProducts = Array.isArray(req.body?.previewProducts) ? req.body.previewProducts : [];
+  const previewProducts = incomingProducts.length ? incomingProducts : preview.products;
+  const selected = previewProducts.filter(product => product.isSelected !== false && product.action !== 'skip');
   if (!selected.length) return res.status(400).json({ error: 'Select at least one product to import' });
 
   try {
     let imagesSkipped = 0;
-    const documents = selected.map((product, index) => {
-      let image = '';
-      if (product.imageEntryName) {
-        const entry = preview.entries.find(item => item.entryName === product.imageEntryName);
-        const buffer = entry?.getData();
-        if (buffer && buffer.length <= 3 * 1024 * 1024) {
-          const extension = path.extname(product.imageEntryName).toLowerCase();
-          const mime = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : extension === '.gif' ? 'image/gif' : 'image/jpeg';
-          image = `data:${mime};base64,${buffer.toString('base64')}`;
-        } else if (entry) {
-          imagesSkipped += 1;
-        }
-      }
-      return {
+    const documents = [];
+    for (const [index, product] of selected.entries()) {
+      const imageUris = Array.isArray(product.imageUrls) ? product.imageUrls.filter(Boolean) : [];
+      const image = imageUris[0] || '';
+      const images = imageUris.slice(0, 6);
+      const baseDoc = {
         id: `p_${Date.now()}_${index}_${crypto.randomUUID().slice(0, 6)}`,
-        title: product.title,
-        category: product.category,
-        subcategory: product.subcategory,
-        price: product.price,
-        originalPrice: product.originalPrice,
-        colors: product.colors,
+        title: product.title || `WhatsApp product ${index + 1}`,
+        category: product.category || 'Accessories',
+        subcategory: product.subcategory || '',
+        price: Number(product.price) || 0,
+        originalPrice: Number(product.originalPrice) || Number(product.price) || 0,
+        colors: Array.isArray(product.colors) ? product.colors : [],
         sizes: [],
         rating: 4,
         ratingCount: 0,
         image,
-        images: image ? [image] : [],
-        description: product.description,
-        stock: product.stock
+        images,
+        description: product.description || 'Imported from WhatsApp catalog.',
+        stock: Number(product.stock) || 10
       };
-    });
-    await Product.insertMany(documents);
+
+      if (product.action === 'update' && product.duplicateMatch?.id) {
+        const existing = await Product.findOne({ id: product.duplicateMatch.id });
+        if (existing) {
+          await Product.updateOne({ id: existing.id }, {
+            $set: {
+              title: baseDoc.title,
+              category: baseDoc.category,
+              subcategory: baseDoc.subcategory,
+              price: baseDoc.price,
+              originalPrice: baseDoc.originalPrice,
+              description: baseDoc.description,
+              image: baseDoc.image || existing.image,
+              images: baseDoc.images.length ? baseDoc.images : existing.images || [existing.image],
+              stock: baseDoc.stock
+            }
+          });
+          continue;
+        }
+      }
+
+      if (Number(baseDoc.price) <= 0) {
+        imagesSkipped += 1;
+        continue;
+      }
+
+      documents.push(baseDoc);
+    }
+
+    if (documents.length) {
+      await Product.insertMany(documents);
+    }
     whatsappImportPreviews.delete(String(req.body?.token || ''));
     res.json({ importedCount: documents.length, imagesSkipped });
   } catch (e) {
