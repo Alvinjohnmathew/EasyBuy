@@ -95,7 +95,8 @@ const productSchema = new mongoose.Schema({
   image: String,
   images: [String],
   description: String,
-  stock: Number
+  stock: Number,
+  createdAt: { type: Date, default: Date.now, index: true }
 });
 
 const orderSchema = new mongoose.Schema({
@@ -267,19 +268,33 @@ function buildDescription(lines, title, priceLine) {
   return joined || (priceLine ? 'Imported from WhatsApp catalog.' : 'Imported from WhatsApp catalog.');
 }
 
+function parseWhatsAppTimestamp(line) {
+  const match = line.match(/^(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)\s*(?:-|–|—)/i);
+  if (!match) return null;
+
+  const datePart = match[1];
+  const timePart = match[2];
+  const normalizedDate = datePart.replace(/\./g, '/');
+  const normalizedTime = timePart.trim().toUpperCase();
+  const parsed = Date.parse(`${normalizedDate} ${normalizedTime}`);
+  return Number.isNaN(parsed) ? null : new Date(parsed);
+}
+
 function splitWhatsAppMessages(chatText) {
   const lines = String(chatText || '').replace(/\r/g, '').split('\n');
   const messages = [];
   let current = null;
 
   for (const line of lines) {
+    const timestamp = parseWhatsAppTimestamp(line);
     const messageMatch = line.match(/^\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\s*(?:-|–|—)\s*(.+)$/i);
     if (messageMatch) {
       if (current) messages.push(current);
       current = {
         text: messageMatch[1].trim(),
         attachments: [],
-        raw: line
+        raw: line,
+        timestamp
       };
       continue;
     }
@@ -417,11 +432,21 @@ async function parseWhatsAppCatalog(zipBuffer) {
   const chatText = textEntry.getData().toString('utf8').replace(/^\uFEFF/, '');
   const imageEntries = entries.filter(entry => !entry.isDirectory && /\.(jpe?g|png|webp|gif)$/i.test(entry.entryName));
   const messages = splitWhatsAppMessages(chatText);
+  const latestTimestamp = messages.reduce((latest, message) => {
+    if (!message.timestamp) return latest;
+    return latest && latest > message.timestamp ? latest : message.timestamp;
+  }, null);
+  const cutoffDate = latestTimestamp ? new Date(latestTimestamp) : new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - 30);
+
   const products = [];
   const usedImageEntries = new Set();
   let pendingImages = [];
 
   for (const [index, message] of messages.entries()) {
+    if (message.timestamp && message.timestamp < cutoffDate) {
+      continue;
+    }
     const rawText = String(message.text || '');
     const attachmentMatches = [...rawText.matchAll(/<attached:\s*([^>]+)>/gi)].map(match => match[1]);
     const matchedImages = [];
@@ -942,7 +967,9 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req,
         return res.status(400).json({ error: 'No products with a price or caption were found. Each product message should contain a caption and ideally a price such as “Price: ₹600”.' });
       }
 
-      const existingProducts = await Product.find({}, { _id: 0, __v: 0 }).lean();
+      const oneMonthAgo = new Date();
+      oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
+      const existingProducts = await Product.find({ createdAt: { $gte: oneMonthAgo } }, { _id: 0, __v: 0 }).lean();
       const products = parsed.products.map(product => {
         const imageEntries = Array.isArray(product.imageEntries) ? product.imageEntries : [];
         const imageUrls = imageEntries
@@ -1023,7 +1050,8 @@ app.post('/api/admin/import-whatsapp-catalog/commit', requireAdmin, async (req, 
         image,
         images,
         description: product.description || 'Imported from WhatsApp catalog.',
-        stock: Number(product.stock) || 10
+        stock: Number(product.stock) || 10,
+        createdAt: new Date()
       };
 
       if (product.action === 'update' && product.duplicateMatch?.id) {
