@@ -14,7 +14,7 @@ const multer = require('multer');
 const Razorpay = require('razorpay');
 const AdmZip = require('adm-zip');
 const Tesseract = require('tesseract.js');
-const { resolveImportWindowDays, calculateDuplicateScore } = require('./importer-utils');
+const { resolveImportWindowDays, calculateDuplicateScore, buildImportedProductGroups } = require('./importer-utils');
 const app = express();
 
 // ============================================================
@@ -442,12 +442,13 @@ async function parseWhatsAppCatalog(zipBuffer) {
 
   const products = [];
   const usedImageEntries = new Set();
-  let pendingImages = [];
+  const groupedMessages = [];
 
-  for (const [index, message] of messages.entries()) {
+  for (const message of messages) {
     if (message.timestamp && message.timestamp < cutoffDate) {
       continue;
     }
+
     const rawText = String(message.text || '');
     const attachmentMatches = [...rawText.matchAll(/<attached:\s*([^>]+)>/gi)].map(match => match[1]);
     const matchedImages = [];
@@ -468,22 +469,25 @@ async function parseWhatsAppCatalog(zipBuffer) {
     const caption = textLines.filter(Boolean).join('\n').trim();
     const hasCaption = Boolean(caption);
 
-    if (matchedImages.length) {
-      pendingImages.push(...matchedImages);
-    }
+    groupedMessages.push({
+      ...message,
+      text: caption,
+      images: matchedImages,
+      hasCaption,
+      hasImages: matchedImages.length > 0
+    });
+  }
 
-    if (hasCaption || pendingImages.length) {
-      const attachedImages = pendingImages.length ? pendingImages : matchedImages;
-      const group = {
-        caption,
-        imageEntries: attachedImages.slice(0, 8)
-      };
-      if (group.imageEntries.length) {
-        pendingImages = [];
-      }
-      if (group.caption || group.imageEntries.length) {
-        products.push(await extractProductDetails(group, products.length));
-      }
+  const groups = buildImportedProductGroups(groupedMessages, imageEntries);
+  for (const [index, group] of groups.entries()) {
+    const imageEntriesForGroup = Array.isArray(group.images) ? group.images : [];
+    const product = await extractProductDetails({
+      caption: `${group.title}\n${group.description}`,
+      imageEntries: imageEntriesForGroup
+    }, index);
+
+    if (product.title && (product.imageEntries.length || product.description || product.price)) {
+      products.push(product);
     }
   }
 
