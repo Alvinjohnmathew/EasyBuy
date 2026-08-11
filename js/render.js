@@ -686,7 +686,7 @@ export function renderAdminDashboard() {
       else if (p.stock <= 3) stockClass = 'stock-low';
 
       return `
-        <tr>
+        <tr data-product-id="${p.id}">
           <td><label class="custom-checkbox"><input type="checkbox" class="product-bulk-select" value="${p.id}"><span class="checkbox-checkmark"></span></label></td>
           <td><div class="table-img"><img src="${p.image || 'assets/easybuy-icon.png'}" alt=""></div></td>
           <td>
@@ -721,13 +721,48 @@ export function renderAdminDashboard() {
       }
     };
 
+    const setSelection = (id, isSelected) => {
+      if (isSelected) selectedProductIds.add(id);
+      else selectedProductIds.delete(id);
+      const checkbox = productsTbody.querySelector(`.product-bulk-select[value="${id}"]`);
+      if (checkbox) checkbox.checked = isSelected;
+      updateBulkDeleteVisibility();
+    };
+
     productsTbody.querySelectorAll('.product-bulk-select').forEach(checkbox => {
       checkbox.addEventListener('change', () => {
         const id = checkbox.value;
-        if (checkbox.checked) selectedProductIds.add(id);
-        else selectedProductIds.delete(id);
-        updateBulkDeleteVisibility();
+        setSelection(id, checkbox.checked);
       });
+    });
+
+    let isDraggingSelection = false;
+    productsTbody.addEventListener('mousedown', (event) => {
+      const row = event.target.closest('tr[data-product-id]');
+      const checkbox = row?.querySelector('.product-bulk-select');
+      if (!row || !checkbox || event.target.closest('button, a, input, select, textarea')) return;
+      isDraggingSelection = true;
+      setSelection(checkbox.value, true);
+      row.classList.add('is-drag-selected');
+    });
+
+    productsTbody.addEventListener('mouseover', (event) => {
+      if (!isDraggingSelection) return;
+      const row = event.target.closest('tr[data-product-id]');
+      const checkbox = row?.querySelector('.product-bulk-select');
+      if (!row || !checkbox) return;
+      setSelection(checkbox.value, true);
+      row.classList.add('is-drag-selected');
+    });
+
+    productsTbody.addEventListener('mouseup', () => {
+      isDraggingSelection = false;
+      productsTbody.querySelectorAll('tr[data-product-id]').forEach(row => row.classList.remove('is-drag-selected'));
+    });
+
+    productsTbody.addEventListener('mouseleave', () => {
+      isDraggingSelection = false;
+      productsTbody.querySelectorAll('tr[data-product-id]').forEach(row => row.classList.remove('is-drag-selected'));
     });
 
     bulkDeleteBtn?.addEventListener('click', async () => {

@@ -76,11 +76,7 @@ function buildImportedProductGroups(messages, imageEntries = []) {
   const groups = [];
   let currentGroup = null;
 
-  const isMeaningfulText = (text) => {
-    const cleaned = String(text || '').trim();
-    if (!cleaned) return false;
-    return /[a-zA-Z]/.test(cleaned) && !/^(?:available|dm|inbox|call|whatsapp|order now|book fast|messages deleted|media omitted|joined using invite link|missed voice|missed video|encryption messages)$/i.test(cleaned);
-  };
+  const isMeaningfulText = (text, hasImage = false) => isMeaningfulProductText(text, hasImage);
 
   const addGroup = (message) => {
     if (!currentGroup) {
@@ -130,12 +126,14 @@ function buildImportedProductGroups(messages, imageEntries = []) {
 
   messages.forEach((message, index) => {
     const text = String(message.text || '').trim();
-    const hasMeaningfulContent = isMeaningfulText(text);
+    const hasMeaningfulContent = isMeaningfulText(text, hasImage);
     const hasImage = Array.isArray(message.images) && message.images.length > 0;
     const previous = messages[index - 1];
     const sameThread = previous && currentGroup && previous.timestamp && message.timestamp && (message.timestamp - previous.timestamp) <= 5 * 60 * 1000;
 
+    const hasImage = Array.isArray(message.images) && message.images.length > 0;
     if (!currentGroup) {
+      if (!isMeaningfulText(text, hasImage)) return;
       addGroup(message);
       return;
     }
@@ -174,7 +172,11 @@ function buildImportedProductGroups(messages, imageEntries = []) {
         images: Array.from(new Set((group.images || []).filter(Boolean)))
       };
     })
-    .filter(product => product.title && (product.images.length || product.description || product.price));
+    .filter(product => {
+      const hasMeaningfulTitle = Boolean(product.title && product.title !== 'WhatsApp product' && isMeaningfulProductText(product.title));
+      const hasMeaningfulDescription = Boolean(product.description && product.description !== 'Imported from WhatsApp catalog.' && isMeaningfulProductText(product.description));
+      return hasMeaningfulTitle || hasMeaningfulDescription || product.images.length > 0;
+    });
 }
 
 module.exports = {

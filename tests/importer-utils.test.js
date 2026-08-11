@@ -52,3 +52,12 @@ test('groups consecutive related messages into one product', () => {
   assert.equal(groups[0].price, 291);
   assert.equal(groups[0].originalPrice, 390);
 });
+
+test('ignores generic chat messages when there is no product title', () => {
+  const groups = buildImportedProductGroups([
+    { text: 'Hi there, how are you?', timestamp: new Date('2026-08-01T10:00:00Z') },
+    { text: 'Price ₹291', timestamp: new Date('2026-08-01T10:01:00Z') }
+  ], []);
+
+  assert.equal(groups.length, 0);
+});
