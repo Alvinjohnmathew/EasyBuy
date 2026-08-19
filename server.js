@@ -538,7 +538,7 @@ async function parseWhatsAppCatalog(zipBuffer) {
       imageEntries: imageEntriesForGroup
     }, index);
 
-    if (product.title && (product.imageEntries.length || product.description || product.price)) {
+    if (product.title && ((product.imageEntryNames && product.imageEntryNames.length) || product.description || product.price)) {
       products.push(product);
     }
   }
@@ -1079,7 +1079,7 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req,
       res.json({ token, products, importWindowDays });
     } catch (e) {
       console.error('WhatsApp catalog preview failed:', e);
-      res.status(400).json({ error: 'Could not read this ZIP. Export the WhatsApp chat again and choose “With Media”.' });
+      res.status(400).json({ error: e.message || 'Could not read this ZIP. Export the WhatsApp chat again and choose “With Media”.' });
     }
   });
 });
