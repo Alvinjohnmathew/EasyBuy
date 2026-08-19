@@ -58,14 +58,19 @@ function isMeaningfulTitleCandidate(value) {
   // Phone numbers: +91 73832 34749, 07383234749, +91 73832 34749: etc.
   if (/^\+?[\d][\d\s().\-]{4,}:?$/.test(line)) return false;
   // System/junk lines — keep in sync with server.js WA_SYSTEM_LINE_RE
-  if (/^(?:available|dm|inbox|call|whatsapp|order now|book fast|missed voice|missed video|joined using invite link|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|end-to-end encryption|this message was deleted|forwarded)$/i.test(line)) return false;
+  if (/^<?\s*(?:available|dm|inbox|call|whatsapp|order now|book fast|missed voice|missed video|joined using invite link|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|file omitted|end-to-end encryption|this message was deleted|forwarded)\s*>?$/i.test(line)) return false;
+  // Filenames & attachment strings
+  if (/^(?:<attached:[^>]+>|.*\(file attached\)|[a-zA-Z0-9_\-]+\.(?:jpe?g|png|webp|gif|opus|mp4|pdf|apk|doc|docx))$/i.test(line)) return false;
+  if (/\.(?:jpe?g|png|webp|gif)$/i.test(line)) return false;
+  if (/\(file attached\)/i.test(line)) return false;
+  if (/<attached:/i.test(line)) return false;
   // Only punctuation / emojis
   if (/^[\W_]+$/.test(line)) return false;
   // Bare price lines: ₹291, Rs.299, 299/-
   if (/^(?:₹|rs\.?|inr)\s*[0-9,]+/i.test(line)) return false;
   if (/^price\s*:?\s*/.test(line) && /[0-9]/.test(line)) return false;
   const hasLetters = /[a-zA-Z]/.test(line);
-  const hasProductWords = /(?:mobile|phone|watch|earbud|headphone|speaker|power\s*bank|powerbank|shirt|shoe|dress|bag|neckband|charger|camera|laptop|tablet|mug|gift|beauty|cream|serum|fan|lamp|keyboard|mouse|monitor|sandal|jacket|hoodie|kurti|saree|jeans|pant|trouser|top|blouse|lehenga|wallet|toy|teddy|bottle)/i.test(line);
+  const hasProductWords = /(?:mobile|phone|watch|earbud|headphone|speaker|power\s*bank|powerbank|shirt|shoe|dress|bag|bags|neckband|charger|camera|laptop|tablet|mug|gift|beauty|cream|serum|fan|lamp|keyboard|mouse|monitor|sandal|jacket|hoodie|kurti|saree|jeans|pant|trouser|top|blouse|lehenga|wallet|toy|teddy|bottle|drone|tws|airpod|airpods|buds|gadget)/i.test(line);
   return hasLetters && (hasProductWords || line.split(/\s+/).length >= 2);
 }
 
@@ -190,12 +195,21 @@ function buildImportedProductGroups(messages, imageEntries = []) {
       !/(?:price|mrp|₹|rs\.?|inr|available|dm|inbox|call|\d+\/?-)/i.test(text)
     );
 
+    const hasCompletedProduct = Boolean(
+      currentGroup &&
+      currentGroup.title &&
+      (currentGroup.price || currentGroup.images.length > 0)
+    );
+
+    // If current product already has a title and photo/price, a new image starts a new product
+    const isNewProductImage = Boolean(hasImage && hasCompletedProduct);
+
     // Expanded system-line pattern — keep in sync with server.js WA_SYSTEM_LINE_RE
-    const isSystemLine = /^(?:\+?[\d][\d\s().\-]{4,}:?|available|dm|inbox|call|whatsapp|order now|book fast|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|joined using invite link|missed voice call|missed video call|end-to-end encryption|this message was deleted|forwarded)$/i.test(text);
+    const isSystemLine = /^<?\s*(?:\+?[\d][\d\s().\-]{4,}:?|available|dm|inbox|call|whatsapp|order now|book fast|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|file omitted|joined using invite link|missed voice call|missed video call|end-to-end encryption|this message was deleted|forwarded)\s*>?$/i.test(text);
 
     const isSeparator = /^(?:[-=]{3,}|separator)$/i.test(text);
 
-    const shouldBreak = !sameThread || isSeparator || looksLikeNewTitle;
+    const shouldBreak = !sameThread || isSeparator || looksLikeNewTitle || isNewProductImage;
 
     if (shouldBreak && (currentGroup.title || currentGroup.price || currentGroup.images.length || currentGroup.descriptionLines.length)) {
       groups.push(currentGroup);

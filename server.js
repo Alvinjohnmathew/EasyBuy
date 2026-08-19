@@ -187,8 +187,11 @@ function inferCatalogCategory(text) {
 
 function cleanWhatsAppLine(line) {
   return String(line || '')
-    .replace(/^\s*<attached:[^>]+>\s*$/i, '')
-    .replace(/^\s*[\u200e\u200f]/, '')
+    .replace(/^[\u200e\u200f\u202a-\u202e\uFEFF]+/, '')
+    .replace(/<attached:\s*[^>]+>/gi, '')
+    .replace(/[a-zA-Z0-9_\-]+\.(?:jpe?g|png|webp|gif)\s*(?:\(file attached\))?/gi, '')
+    .replace(/\(file attached\)/gi, '')
+    .replace(/^<?\s*(?:media|image|video|audio|sticker|gif|file)\s+omitted\s*>?$/gi, '')
     .trim();
 }
 
@@ -205,8 +208,12 @@ function safeTitleCandidate(text, fallback) {
     .split(/\r?\n/)
     .map(line => line.trim())
     .filter(Boolean)
-    .map(line => line.replace(/^(?:⭐|✨|🔷|📦|📱|🎧|👟|👕|🛍️|💄|🛒|🔥)\s*/u, ''))
+    .map(line => line.replace(/^(?:⭐|✨|🔷|📦|📱|🎧|👟|👕|🛍️|💄|🛒|🔥|📷|⚡|👇|🌟|💥|🔥|✅|➡️)\s*/u, ''))
     .filter(line => !/^(?:buy|get|price|mrp|offer|free shipping|cash on delivery|high quality|new type c|available|contact|whatsapp)/i.test(line))
+    .filter(line => !/^<?\s*(?:media|image|video|audio|sticker|gif|file)\s+omitted\s*>?$/i.test(line))
+    .filter(line => !/\.(?:jpe?g|png|webp|gif)$/i.test(line))
+    .filter(line => !/\(file attached\)/i.test(line))
+    .filter(line => !/<attached:/i.test(line))
     .find(line => line.length >= 3);
   const fallbackCandidate = cleaned || String(text || '').trim() || fallback;
   return fallbackCandidate.replace(/^\s*(?:product|item|new|latest)\s+/i, '').slice(0, 220);
@@ -477,9 +484,20 @@ async function parseWhatsAppCatalog(zipBuffer) {
     }
 
     const rawText = String(message.text || '');
-    const attachmentMatches = [...rawText.matchAll(/<attached:\s*([^>]+)>/gi)].map(match => match[1]);
-    const matchedImages = [];
 
+    // Extract attached filenames from various WhatsApp export formats:
+    // Format 1: <attached: filename.jpg>
+    // Format 2: IMG-20260819-WA0188.jpg (file attached)
+    // Format 3: filename.jpg anywhere in text
+    const attachmentMatches = [];
+
+    const tagMatches = [...rawText.matchAll(/<attached:\s*([^>]+)>/gi)].map(m => m[1].trim());
+    attachmentMatches.push(...tagMatches);
+
+    const fileMatches = [...rawText.matchAll(/([a-zA-Z0-9_\-]+\.(?:jpe?g|png|webp|gif))/gi)].map(m => m[1].trim());
+    attachmentMatches.push(...fileMatches);
+
+    const matchedImages = [];
     for (const attachedName of attachmentMatches) {
       const imageEntry = imageEntries.find(entry => !usedImageEntries.has(entry) && findMatchingImageEntry(entry, attachedName));
       if (imageEntry) {
@@ -488,11 +506,26 @@ async function parseWhatsAppCatalog(zipBuffer) {
       }
     }
 
+    // Fallback: If no explicit filename match was found, but message has media indicators
+    // or is blank/attachment line, assign next available image entry from the ZIP.
+    if (!matchedImages.length && imageEntries.length > usedImageEntries.size) {
+      const hasAttachmentHint = /<attached:|\(file attached\)|omitted|image|media|photo|picture|\.(?:jpe?g|png|webp|gif)/i.test(rawText) || !rawText.trim();
+      if (hasAttachmentHint) {
+        const nextAvailable = imageEntries.find(entry => !usedImageEntries.has(entry));
+        if (nextAvailable) {
+          matchedImages.push(nextAvailable);
+          usedImageEntries.add(nextAvailable);
+        }
+      }
+    }
+
     const textLines = rawText
       .split(/\r?\n/)
       .map(cleanWhatsAppLine)
       .filter(Boolean)
-      .filter(line => !/<attached:/i.test(line));
+      .filter(line => !/<attached:/i.test(line))
+      .filter(line => !/\(file attached\)/i.test(line))
+      .filter(line => !/^<?\s*(?:media|image|video|audio|sticker|gif|file)\s+omitted\s*>?$/i.test(line));
     const caption = textLines.filter(Boolean).join('\n').trim();
     const hasCaption = Boolean(caption);
 
