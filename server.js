@@ -255,15 +255,8 @@ function estimateNameConfidence(title, caption, imageNames) {
 }
 
 async function extractTextFromImage(entry) {
-  try {
-    if (!entry || typeof entry.getData !== 'function') return '';
-    const buffer = entry.getData();
-    const imagePath = `data:${getImageMime(entry.entryName)};base64,${buffer.toString('base64')}`;
-    const result = await Tesseract.recognize(imagePath, 'eng', { logger: () => {} });
-    return String(result.data?.text || '').trim();
-  } catch (error) {
-    return '';
-  }
+  // Disabled Tesseract OCR in bulk catalog upload to prevent server memory crashes and worker timeouts
+  return '';
 }
 
 function buildDescription(lines, title, priceLine) {
@@ -403,13 +396,12 @@ async function extractProductDetails(group, index) {
     description: combinedDescription || description,
     colors: [],
     stock: 10,
-    imageEntries: imageEntries,
     imageName: imageNames[0] || '',
     imageEntryNames: imageNames,
     sourceText: caption,
     nameConfidence,
     needsReview,
-    hasImage: (group.imageEntries || []).length > 0,
+    hasImage: imageNames.length > 0,
     action: 'create',
     isSelected: !needsReview
   };
@@ -1037,11 +1029,11 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req,
       cutoffDate.setDate(cutoffDate.getDate() - importWindowDays);
       const existingProducts = await Product.find({ createdAt: { $gte: cutoffDate } }, { _id: 0, __v: 0 }).lean();
       const products = parsed.products.map(product => {
-        const imageEntries = Array.isArray(product.imageEntries) ? product.imageEntries : [];
-        const imageUrls = imageEntries
-          .map(entry => toDataUri(entry.getData ? entry.getData() : null, entry.entryName))
-          .filter(Boolean);
-        const primaryImage = imageUrls[0] || null;
+        const entryNames = Array.isArray(product.imageEntryNames) ? product.imageEntryNames : [];
+        const primaryName = entryNames[0] || product.imageName;
+        const primaryEntry = primaryName ? parsed.entries.find(e => !e.isDirectory && path.basename(e.entryName) === primaryName) : null;
+        const primaryImage = primaryEntry ? toDataUri(primaryEntry.getData(), primaryEntry.entryName) : null;
+
         const bestMatch = existingProducts
           .map(existing => {
             const nameSimilarity = similarityScore(product.title, existing.title || '');
@@ -1050,7 +1042,7 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req,
                 title: product.title,
                 category: product.category,
                 description: product.description,
-                imageNames: imageEntries.map(entry => path.basename(entry.entryName))
+                imageNames: entryNames
               },
               {
                 title: existing.title || '',
@@ -1059,14 +1051,10 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req,
                 images: Array.isArray(existing.images) ? existing.images : []
               }
             );
-            const imageSimilarity = imageUrls.length && Array.isArray(existing.images) && existing.images.length > 0
-              ? Math.max(...imageUrls.map(url => (url === existing.image ? 1 : 0)))
-              : 0;
             return {
               ...existing,
               nameSimilarity,
-              imageSimilarity,
-              score: Math.max(duplicateScore, nameSimilarity, imageSimilarity)
+              score: Math.max(duplicateScore, nameSimilarity)
             };
           })
           .filter(candidate => candidate.score >= 0.78)
@@ -1074,9 +1062,9 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req,
 
         return {
           ...product,
-          hasImage: Boolean(primaryImage || imageUrls.length),
+          hasImage: Boolean(primaryImage || entryNames.length > 0),
           imageUrl: primaryImage,
-          imageUrls,
+          imageUrls: primaryImage ? [primaryImage] : [],
           duplicateMatch: bestMatch ? { id: bestMatch.id, title: bestMatch.title, score: bestMatch.score } : null,
           action: bestMatch ? 'update' : 'create',
           isSelected: !product.needsReview,
@@ -1113,9 +1101,22 @@ app.post('/api/admin/import-whatsapp-catalog/commit', requireAdmin, async (req, 
     let imagesSkipped = 0;
     const documents = [];
     for (const [index, product] of selected.entries()) {
-      const imageUris = Array.isArray(product.imageUrls) ? product.imageUrls.filter(Boolean) : [];
-      const image = imageUris[0] || '';
-      const images = imageUris.slice(0, 6);
+      let imageUris = Array.isArray(product.imageUrls) ? product.imageUrls.filter(Boolean) : [];
+
+      // Reconstruct image data URIs from zip entries stored in preview map
+      const entryNames = Array.isArray(product.imageEntryNames) ? product.imageEntryNames : [];
+      if (entryNames.length && Array.isArray(preview.entries)) {
+        const reconstructed = entryNames
+          .slice(0, 6)
+          .map(name => preview.entries.find(e => !e.isDirectory && path.basename(e.entryName) === name))
+          .filter(Boolean)
+          .map(entry => toDataUri(entry.getData(), entry.entryName))
+          .filter(Boolean);
+        if (reconstructed.length) imageUris = reconstructed;
+      }
+
+      const image = imageUris[0] || (product.imageUrl || '');
+      const images = imageUris.length ? imageUris.slice(0, 6) : (image ? [image] : []);
       const baseDoc = {
         id: `p_${Date.now()}_${index}_${crypto.randomUUID().slice(0, 6)}`,
         title: product.title || `WhatsApp product ${index + 1}`,

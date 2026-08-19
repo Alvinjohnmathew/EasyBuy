@@ -311,8 +311,9 @@ function initWhatsAppImport() {
       renderWhatsAppPreview();
       commitBtn.disabled = currentProducts.length === 0;
     } catch (e) {
+      console.error('WhatsApp upload error:', e);
       previewContainer.innerHTML = '';
-      showToast('Upload failed. Please check your connection.', 'error');
+      showToast(e.message || 'Upload failed. Please check your connection.', 'error');
     } finally {
       previewBtn.disabled = false;
     }
