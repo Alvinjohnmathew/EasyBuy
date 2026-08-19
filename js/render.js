@@ -712,12 +712,20 @@ export function renderAdminDashboard() {
     }).join('');
 
     const selectedProductIds = new Set();
+    const dragHint = document.getElementById('drag-select-hint');
+    const selectAllChk = document.getElementById('admin-select-all-products');
+
     const updateBulkDeleteVisibility = () => {
       const hasSelection = selectedProductIds.size > 0;
       bulkDeleteBtn?.classList.toggle('hidden', !hasSelection);
       bulkDeleteBtn?.toggleAttribute('disabled', !hasSelection);
       if (bulkDeleteBtn) {
-        bulkDeleteBtn.textContent = hasSelection ? `Delete Selected (${selectedProductIds.size})` : 'Delete Selected';
+        bulkDeleteBtn.textContent = hasSelection ? `🗑 Delete Selected (${selectedProductIds.size})` : 'Delete Selected';
+      }
+      // Keep select-all checkbox state in sync
+      if (selectAllChk) {
+        selectAllChk.checked = hasSelection && selectedProductIds.size === adminProducts.length;
+        selectAllChk.indeterminate = hasSelection && selectedProductIds.size < adminProducts.length;
       }
     };
 
@@ -728,6 +736,12 @@ export function renderAdminDashboard() {
       if (checkbox) checkbox.checked = isSelected;
       updateBulkDeleteVisibility();
     };
+
+    // Select All header checkbox
+    selectAllChk?.addEventListener('change', () => {
+      const shouldSelectAll = selectAllChk.checked;
+      adminProducts.forEach(p => setSelection(p.id, shouldSelectAll));
+    });
 
     productsTbody.querySelectorAll('.product-bulk-select').forEach(checkbox => {
       checkbox.addEventListener('change', () => {
@@ -744,6 +758,8 @@ export function renderAdminDashboard() {
       isDraggingSelection = true;
       setSelection(checkbox.value, true);
       row.classList.add('is-drag-selected');
+      // Show drag hint
+      if (dragHint) dragHint.classList.remove('hidden');
     });
 
     productsTbody.addEventListener('mouseover', (event) => {
@@ -755,20 +771,22 @@ export function renderAdminDashboard() {
       row.classList.add('is-drag-selected');
     });
 
-    productsTbody.addEventListener('mouseup', () => {
+    const endDrag = () => {
+      if (!isDraggingSelection) return;
       isDraggingSelection = false;
       productsTbody.querySelectorAll('tr[data-product-id]').forEach(row => row.classList.remove('is-drag-selected'));
-    });
+      // Hide drag hint after a short delay
+      setTimeout(() => { if (dragHint) dragHint.classList.add('hidden'); }, 2000);
+    };
 
-    productsTbody.addEventListener('mouseleave', () => {
-      isDraggingSelection = false;
-      productsTbody.querySelectorAll('tr[data-product-id]').forEach(row => row.classList.remove('is-drag-selected'));
-    });
+    productsTbody.addEventListener('mouseup', endDrag);
+    productsTbody.addEventListener('mouseleave', endDrag);
+    document.addEventListener('mouseup', endDrag, { once: true });
 
     bulkDeleteBtn?.addEventListener('click', async () => {
       const ids = Array.from(selectedProductIds);
       if (!ids.length) return;
-      if (!confirm(`Delete ${ids.length} selected product${ids.length > 1 ? 's' : ''}?`)) return;
+      if (!confirm(`Delete ${ids.length} selected product${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
       const result = await state.deleteProducts(ids);
       if (result.ok) {
         showToast(`Deleted ${ids.length} product${ids.length > 1 ? 's' : ''}`, 'info');

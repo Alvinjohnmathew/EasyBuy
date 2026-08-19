@@ -225,7 +225,8 @@ function extractPriceValue(text) {
 function calculateSellingPrice(rawPrice) {
   if (!rawPrice) return null;
   const numericPrice = Number(rawPrice);
-  return Number.isFinite(numericPrice) && numericPrice > 0 ? numericPrice + 200 : null;
+  // BUG FIX: removed the erroneous "+ 200" that was inflating every price.
+  return Number.isFinite(numericPrice) && numericPrice > 0 ? numericPrice : null;
 }
 
 function calculateOriginalPrice(sellingPrice, rawPrice) {
@@ -263,10 +264,14 @@ function buildDescription(lines, title, priceLine) {
     .map(cleanWhatsAppLine)
     .filter(Boolean)
     .filter(line => line !== title)
-    .filter(line => !/^(?:price|selling price|offer price|mrp|rate|free shipping|cash on delivery|available|contact|whatsapp)/i.test(line))
-    .filter(line => !/^(?:₹|rs\.?|inr)\s*[0-9,]+/i.test(line));
+    .filter(line => !/^(?:price|selling price|offer price|mrp|rate|free shipping|cash on delivery|available|contact|whatsapp|dm|inbox|order now|book fast)/i.test(line))
+    .filter(line => !/^(?:₹|rs\.?|inr)\s*[0-9,]+/i.test(line))
+    // Filter WhatsApp system noise lines
+    .filter(line => !WA_SYSTEM_LINE_RE.test(line.trim()))
+    // Filter bare phone numbers
+    .filter(line => !/^\+?[\d][\d\s().\-]{4,}:?$/.test(line.trim()));
   const joined = filtered.join('\n').trim();
-  return joined || (priceLine ? 'Imported from WhatsApp catalog.' : 'Imported from WhatsApp catalog.');
+  return joined || 'Imported from WhatsApp catalog.';
 }
 
 function parseWhatsAppTimestamp(line) {
@@ -281,6 +286,14 @@ function parseWhatsAppTimestamp(line) {
   return Number.isNaN(parsed) ? null : new Date(parsed);
 }
 
+// Patterns that identify sender names / phone numbers at the start of a
+// WhatsApp message line (after the timestamp dash). We ONLY strip the sender
+// prefix — never the message body.
+const SENDER_PREFIX_RE = /^(\+?[\d][\d\s().\-]{2,}|[\w][^:]{0,59}):\s*/;
+
+// WhatsApp system / noise lines that carry no product information.
+const WA_SYSTEM_LINE_RE = /^(?:\+?[\d][\d\s().\-]{4,}|available|dm|inbox|call|whatsapp|order now|book fast|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|joined using invite link|missed voice call|missed video call|end-to-end encryption|your security code|you created group|added you|left|removed|changed the group|changed their phone number|forwarded|this message was deleted)$/i;
+
 function splitWhatsAppMessages(chatText) {
   const lines = String(chatText || '').replace(/\r/g, '').split('\n');
   const messages = [];
@@ -288,11 +301,24 @@ function splitWhatsAppMessages(chatText) {
 
   for (const line of lines) {
     const timestamp = parseWhatsAppTimestamp(line);
+    // WhatsApp export format: "DD/MM/YYYY, HH:MM - Sender Name: message body"
+    // or:                     "DD/MM/YYYY, HH:MM - +91 73832 34749: message body"
     const messageMatch = line.match(/^\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\s*(?:-|–|—)\s*(.+)$/i);
     if (messageMatch) {
       if (current) messages.push(current);
+
+      const rawAfterDash = messageMatch[1].trim();
+
+      // Strip sender prefix (phone number or display name).
+      // IMPORTANT: if stripping leaves nothing, we use '' — we never restore
+      // rawAfterDash because that would put the phone number back as product text.
+      const stripped = rawAfterDash.replace(SENDER_PREFIX_RE, '').trim();
+      // Extra safety: if what remains still looks like a bare phone number,
+      // discard it entirely.
+      const bodyText = /^\+?[\d][\d\s().\-]{4,}:?$/.test(stripped) ? '' : stripped;
+
       current = {
-        text: messageMatch[1].trim(),
+        text: bodyText,
         attachments: [],
         raw: line,
         timestamp
@@ -301,6 +327,7 @@ function splitWhatsAppMessages(chatText) {
     }
 
     if (current) {
+      // Continuation lines (multi-line messages)
       current.text = `${current.text}\n${line}`.trim();
       current.raw = `${current.raw}\n${line}`;
     }

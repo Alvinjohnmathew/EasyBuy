@@ -85,12 +85,14 @@
             <div class="table-search" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
               <input type="text" id="admin-product-search" placeholder="Search by name or category...">
               <button class="secondary-btn small-btn hidden" id="bulk-delete-products-btn" type="button">Delete Selected</button>
+              <span class="drag-select-hint hidden" id="drag-select-hint">✦ Drag over rows to select multiple</span>
             </div>
           </div>
           <div class="table-wrapper">
             <table class="admin-table">
               <thead>
                 <tr>
+                  <th style="width:36px;"><label class="custom-checkbox" title="Select all products"><input type="checkbox" id="admin-select-all-products"><span class="checkbox-checkmark"></span></label></th>
                   <th>Thumbnail</th>
                   <th>Product Details</th>
                   <th>Category</th>
