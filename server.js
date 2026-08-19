@@ -52,7 +52,7 @@ if (RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET) {
 
 app.set('trust proxy', 1);
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '500mb' }));
 app.use(cookieParser());
 
 // Image uploads go straight to memory, then get base64-encoded into MongoDB —
@@ -988,7 +988,7 @@ app.post('/api/admin/upload-images', requireAdmin, (req, res) => {
 app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req, res) => {
   catalogUpload.single('catalog')(req, res, async (err) => {
     if (err) {
-      const message = err.code === 'LIMIT_FILE_SIZE' ? 'The ZIP is too large (maximum 50MB)' : (err.message || 'Upload failed');
+      const message = err.code === 'LIMIT_FILE_SIZE' ? 'The ZIP is too large (maximum 1GB)' : (err.message || 'Upload failed');
       return res.status(400).json({ error: message });
     }
     if (!req.file) return res.status(400).json({ error: 'Please choose your WhatsApp ZIP file' });
@@ -1510,7 +1510,7 @@ start().catch(err => {
 
 const catalogUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: 1024 * 1024 * 1024 }, // 1GB (1024MB)
   fileFilter: (req, file, cb) => {
     if (!String(file.originalname || '').toLowerCase().endsWith('.zip')) {
       return cb(new Error('Please select a WhatsApp chat ZIP file'));
