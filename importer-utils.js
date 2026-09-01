@@ -58,7 +58,7 @@ function isMeaningfulTitleCandidate(value) {
   // Phone numbers: +91 73832 34749, 07383234749, +91 73832 34749: etc.
   if (/^\+?[\d][\d\s().\-]{4,}:?$/.test(line)) return false;
   // System/junk lines & sender headers — keep in sync with server.js WA_SYSTEM_LINE_RE
-  if (/^<?\s*(?:available|dm|inbox|call|whatsapp|order now|book fast|missed voice|missed video|joined using invite link|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|file omitted|end-to-end encryption|this message was deleted|forwarded|community admin|group admin|admin)\s*>?$/i.test(line)) return false;
+  if (/^<?\s*(?:available|dm|inbox|call|whatsapp|order now|book fast|missed voice|missed video|joined using invite link|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|file omitted|end-to-end encryption|this message was deleted|forwarded|community admin|group admin|admin|announcements|announcement)\s*>?$/i.test(line)) return false;
   // Sender metadata lines (e.g. ~ Hananeyyy +91 95442 99563)
   if (/^~\s*[\w\s+\-().]{1,60}:?$/i.test(line)) return false;
   // Filenames & attachment strings
@@ -83,7 +83,7 @@ function chooseMeaningfulTitle(lines, fallback = 'WhatsApp product') {
     if (!trimmed) continue;
     const cleaned = trimmed
       .replace(/^~\s*[\w\s+\-().]{1,60}:?\s*/i, '')
-      .replace(/^(?:Community admin|Group admin|Admin|Seller)\s*:?\s*/i, '')
+      .replace(/^(?:Community admin|Group admin|Admin|Seller|Announcements)\s*:?\s*/i, '')
       .replace(/^(?:⭐|✨|🔷|📦|📱|🎧|👟|👕|🛍️|💄|🛒|🔥|📷|⚡|👇|🌟|💥|🔥|✅|➡️|🌀)\s*/gu, '')
       .replace(/^(?:new|latest|product|item)\s+/i, '')
       .trim();

@@ -292,47 +292,49 @@ function parseWhatsAppTimestamp(line) {
 const SENDER_PREFIX_RE = /^(?:~?\s*[^:\n]{1,80}):\s*/;
 
 // WhatsApp system / noise lines that carry no product information.
-const WA_SYSTEM_LINE_RE = /^(?:\+?[\d][\d\s().\-]{4,}|available|dm|inbox|call|whatsapp|order now|book fast|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|joined using invite link|missed voice call|missed video call|end-to-end encryption|your security code|you created group|added you|left|removed|changed the group|changed their phone number|forwarded|this message was deleted|community admin|group admin)$/i;
+const WA_SYSTEM_LINE_RE = /^(?:\+?[\d][\d\s().\-]{4,}|available|dm|inbox|call|whatsapp|order now|book fast|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|joined using invite link|missed voice call|missed video call|end-to-end encryption|your security code|you created group|added you|left|removed|changed the group|changed their phone number|forwarded|this message was deleted|community admin|group admin|announcements|announcement)$/i;
 
 function splitWhatsAppMessages(chatText) {
   const lines = String(chatText || '').replace(/\r/g, '').split('\n');
   const messages = [];
   let current = null;
 
-  for (const line of lines) {
-    const timestamp = parseWhatsAppTimestamp(line);
-    // Format 1: "19/08/2026, 05:53 - ~ Hananeyyy: message"
-    // Format 2: "[19/08/2026, 05:53:10] Sender: message"
-    const messageMatch = line.match(/^(?:\[)?\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?(?:\])?\s*(?:-|–|—)?\s*(.+)$/i);
-    if (messageMatch) {
-      if (current) messages.push(current);
+  for (const rawLine of lines) {
+    // If a line contains --- separators, expand into sub-lines
+    const subLines = rawLine.includes('---') ? rawLine.split(/(?:^|\s)-{3,}(?:\s|$)/).filter(Boolean) : [rawLine];
 
-      const rawAfterDash = messageMatch[1].trim();
-      const stripped = rawAfterDash.replace(SENDER_PREFIX_RE, '').trim();
-      const bodyText = /^(?:~?\s*[\w\s+\-().]{1,60}:?|\+?[\d][\d\s().\-]{4,}:?)$/.test(stripped) ? '' : stripped;
+    for (const line of subLines) {
+      const timestamp = parseWhatsAppTimestamp(line);
+      const messageMatch = line.match(/^(?:\[)?\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?(?:\])?\s*(?:-|–|—)?\s*(.+)$/i);
+      if (messageMatch) {
+        if (current) messages.push(current);
 
-      current = {
-        text: bodyText,
-        attachments: [],
-        raw: line,
-        timestamp
-      };
-      continue;
-    }
+        const rawAfterDash = messageMatch[1].trim();
+        const stripped = rawAfterDash.replace(SENDER_PREFIX_RE, '').trim();
+        const bodyText = /^(?:~?\s*[\w\s+\-().]{1,60}:?|\+?[\d][\d\s().\-]{4,}:?)$/.test(stripped) ? '' : stripped;
 
-    if (current) {
-      current.text = `${current.text}\n${line}`.trim();
-      current.raw = `${current.raw}\n${line}`;
-    } else if (line.trim()) {
-      // Handles un-timestamped copied text directly from WhatsApp Web / Desktop
-      const cleanLine = line.trim().replace(SENDER_PREFIX_RE, '').trim();
-      if (cleanLine) {
         current = {
-          text: cleanLine,
+          text: bodyText,
           attachments: [],
           raw: line,
-          timestamp: null
+          timestamp
         };
+        continue;
+      }
+
+      if (current) {
+        current.text = `${current.text}\n${line}`.trim();
+        current.raw = `${current.raw}\n${line}`;
+      } else if (line.trim()) {
+        const cleanLine = line.trim().replace(SENDER_PREFIX_RE, '').trim();
+        if (cleanLine) {
+          current = {
+            text: cleanLine,
+            attachments: [],
+            raw: line,
+            timestamp: null
+          };
+        }
       }
     }
   }
