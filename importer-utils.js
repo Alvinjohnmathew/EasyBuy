@@ -55,6 +55,9 @@ function extractPriceValue(text) {
 function isMeaningfulTitleCandidate(value) {
   const line = String(value || '').trim();
   if (!line) return false;
+  // Common short greetings or conversational phrases should not be treated
+  // as product titles (e.g., "Hi", "Hello", "How are you?").
+  if (/^(?:hi|hello|hey|how are you|thank you|thanks|good morning|good evening|good afternoon)\b/i.test(line)) return false;
   // Phone numbers: +91 73832 34749, 07383234749, +91 73832 34749: etc.
   if (/^\+?[\d][\d\s().\-]{4,}:?$/.test(line)) return false;
   // Encryption notices & System/junk lines — keep in sync with server.js WA_SYSTEM_LINE_RE
@@ -71,9 +74,10 @@ function isMeaningfulTitleCandidate(value) {
   if (/^[\W_]+$/.test(line)) return false;
   // Bare price lines: ₹291, Rs.299, 299/-
   if (/^(?:₹|rs\.?|inr)\s*[0-9,]+/i.test(line)) return false;
-  if (/^price\s*:?\s*/.test(line) && /[0-9]/.test(line)) return false;
+  if (/^price\s*:?\s*/i.test(line) && /[0-9]/.test(line)) return false;
   const hasLetters = /[a-zA-Z]/.test(line);
   const hasProductWords = /(?:marshall|mobile|phone|watch|earbud|earbuds|headphone|speaker|power\s*bank|powerbank|shirt|shoe|dress|bag|bags|neckband|charger|camera|laptop|tablet|mug|gift|beauty|cream|serum|fan|lamp|keyboard|mouse|monitor|sandal|jacket|hoodie|kurti|saree|jeans|pant|trouser|top|blouse|lehenga|wallet|toy|teddy|bottle|drone|tws|airpod|airpods|pods|buds|gadget)/i.test(line);
+  // Require product words OR at least 2 tokens to balance false positives
   return hasLetters && (hasProductWords || line.split(/\s+/).length >= 2);
 }
 
@@ -109,8 +113,11 @@ function chooseMeaningfulTitle(lines, fallback = 'WhatsApp product') {
 function buildImportedProductGroups(messages, imageEntries = []) {
   const groups = [];
   let currentGroup = null;
+  // pendingImages holds image filenames/ids from image-only messages that
+  // should be attached to the next product-text message encountered.
+  let pendingImages = [];
 
-  const addGroup = (message) => {
+  const addGroup = (message, initialImages = []) => {
     if (!currentGroup) {
       currentGroup = {
         title: '',
@@ -122,7 +129,7 @@ function buildImportedProductGroups(messages, imageEntries = []) {
         colour: '',
         size: '',
         category: '',
-        images: [],
+        images: Array.isArray(initialImages) ? Array.from(initialImages) : [],
         timestamp: message.timestamp || null,
         sourceMessages: []
       };
@@ -183,10 +190,22 @@ function buildImportedProductGroups(messages, imageEntries = []) {
       : -1; // -1 = "no info, assume same thread"
     const sameThread = timeDiffMs < 0 || (timeDiffMs >= 0 && timeDiffMs <= 5 * 60 * 1000);
 
+    // --- Handle image-only messages by queueing them as pending images ---
+    // We DO NOT create a product group for a pure image message. Instead
+    // we collect the image(s) and attach them to the next product-text.
+    if (hasImage && !isMeaningfulTitleCandidate(text)) {
+      // collect images (filenames or identifiers)
+      pendingImages.push(...(message.images || []));
+      return;
+    }
+
     // --- Start a fresh group when no group is open ---
     if (!currentGroup) {
+      // If this message has meaningful text, attach any pending images.
       if (!hasMeaningfulContent) return;
-      addGroup(message);
+      addGroup(message, pendingImages);
+      // clear pending images after attaching
+      pendingImages = [];
       return;
     }
 
@@ -219,22 +238,50 @@ function buildImportedProductGroups(messages, imageEntries = []) {
     const shouldBreak = !sameThread || isSeparator || looksLikeNewTitle || isNewProductImage;
 
     if (shouldBreak && (currentGroup.title || currentGroup.price || currentGroup.images.length || currentGroup.descriptionLines.length)) {
+      // Decide whether pendingImages belong to the previous group or the next
+      // group. If this message is NOT in the same thread (i.e., time gap is
+      // large), treat the pending images as belonging to the PREVIOUS group.
+      if (!sameThread && pendingImages.length) {
+        currentGroup.images.push(...pendingImages);
+        pendingImages = [];
+        groups.push(currentGroup);
+        currentGroup = null;
+        if (isSystemLine || isSeparator || !hasMeaningfulContent) return;
+        addGroup(message);
+        return;
+      }
+
+      // Otherwise, attach pending images to the next product (forward-merge)
       groups.push(currentGroup);
       currentGroup = null;
       // System lines and bare separators don't start a new product group
       if (isSystemLine || isSeparator || !hasMeaningfulContent) return;
-      addGroup(message);
+      addGroup(message, pendingImages);
+      pendingImages = [];
       return;
     }
 
     // Skip pure system noise that adds nothing to the current group
     if (isSystemLine && !hasImage) return;
 
+    // Attach any queued pending images to the current group before adding
+    // this message's content, but avoid duplicating entries.
+    if (pendingImages.length) {
+      currentGroup.images.push(...pendingImages);
+      pendingImages = [];
+    }
     addGroup(message);
   });
 
   if (currentGroup && (currentGroup.title || currentGroup.price || currentGroup.images.length || currentGroup.descriptionLines.length)) {
     groups.push(currentGroup);
+  }
+
+  // Trailing pendingImages (image-only messages at the end of the chat)
+  // should not be attached to the last product. They are ignored.
+  if (pendingImages.length) {
+    // Optionally log for debugging (server logs only).
+    // console.log('Ignoring trailing orphan images:', pendingImages);
   }
 
   return groups
