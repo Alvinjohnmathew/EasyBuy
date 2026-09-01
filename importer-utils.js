@@ -57,7 +57,8 @@ function isMeaningfulTitleCandidate(value) {
   if (!line) return false;
   // Phone numbers: +91 73832 34749, 07383234749, +91 73832 34749: etc.
   if (/^\+?[\d][\d\s().\-]{4,}:?$/.test(line)) return false;
-  // System/junk lines & sender headers — keep in sync with server.js WA_SYSTEM_LINE_RE
+  // Encryption notices & System/junk lines — keep in sync with server.js WA_SYSTEM_LINE_RE
+  if (/.*(?:end-to-end encrypted|learn more|messages and calls are end-to-end).*/i.test(line)) return false;
   if (/^<?\s*(?:available|dm|inbox|call|whatsapp|order now|book fast|missed voice|missed video|joined using invite link|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|file omitted|end-to-end encryption|this message was deleted|forwarded|community admin|group admin|admin|announcements|announcement)\s*>?$/i.test(line)) return false;
   // Sender metadata lines (e.g. ~ Hananeyyy +91 95442 99563)
   if (/^~\s*[\w\s+\-().]{1,60}:?$/i.test(line)) return false;
@@ -84,7 +85,9 @@ function chooseMeaningfulTitle(lines, fallback = 'WhatsApp product') {
     const cleaned = trimmed
       .replace(/^~\s*[\w\s+\-().]{1,60}:?\s*/i, '')
       .replace(/^(?:Community admin|Group admin|Admin|Seller|Announcements)\s*:?\s*/i, '')
-      .replace(/^(?:⭐|✨|🔷|📦|📱|🎧|👟|👕|🛍️|💄|🛒|🔥|📷|⚡|👇|🌟|💥|🔥|✅|➡️|🌀)\s*/gu, '')
+      .replace(/^[\s*_~*\u200e\u200f]+|[\s*_~*\u200e\u200f]+$/g, '')
+      .replace(/^(?:⭐|✨|🔷|📦|📱|🎧|👟|👕|🛍️|💄|🛒|🔥|📷|⚡|👇|🌟|💥|🔥|✅|➡️|🌀|❤️‍🔥|🕶️|🚗|🚁|☔|☂️|🔋|🔌|🔊|💡|🎮|🦟)\s*/gu, '')
+      .replace(/^[\s*_~*\u200e\u200f]+|[\s*_~*\u200e\u200f]+$/g, '')
       .replace(/^(?:new|latest|product|item)\s+/i, '')
       .trim();
     if (isMeaningfulTitleCandidate(cleaned)) return cleaned.slice(0, 220);

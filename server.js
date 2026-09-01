@@ -208,7 +208,10 @@ function safeTitleCandidate(text, fallback) {
     .split(/\r?\n/)
     .map(line => line.trim())
     .filter(Boolean)
-    .map(line => line.replace(/^(?:⭐|✨|🔷|📦|📱|🎧|👟|👕|🛍️|💄|🛒|🔥|📷|⚡|👇|🌟|💥|🔥|✅|➡️)\s*/u, ''))
+    .filter(line => !/.*(?:end-to-end encrypted|learn more|messages and calls are end-to-end).*/i.test(line))
+    .map(line => line.replace(/^[\s*_~*\u200e\u200f]+|[\s*_~*\u200e\u200f]+$/g, ''))
+    .map(line => line.replace(/^(?:⭐|✨|🔷|📦|📱|🎧|👟|👕|🛍️|💄|🛒|🔥|📷|⚡|👇|🌟|💥|🔥|✅|➡️|🌀|❤️‍🔥|🕶️|🚗|🚁|☔|☂️|🔋|🔌|🔊|💡|🎮|🦟)\s*/gu, ''))
+    .map(line => line.replace(/^[\s*_~*\u200e\u200f]+|[\s*_~*\u200e\u200f]+$/g, ''))
     .filter(line => !/^(?:buy|get|price|mrp|offer|free shipping|cash on delivery|high quality|new type c|available|contact|whatsapp)/i.test(line))
     .filter(line => !/^<?\s*(?:media|image|video|audio|sticker|gif|file)\s+omitted\s*>?$/i.test(line))
     .filter(line => !/\.(?:jpe?g|png|webp|gif)$/i.test(line))
@@ -292,7 +295,7 @@ function parseWhatsAppTimestamp(line) {
 const SENDER_PREFIX_RE = /^(?:~?\s*[^:\n]{1,80}):\s*/;
 
 // WhatsApp system / noise lines that carry no product information.
-const WA_SYSTEM_LINE_RE = /^(?:\+?[\d][\d\s().\-]{4,}|available|dm|inbox|call|whatsapp|order now|book fast|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|joined using invite link|missed voice call|missed video call|end-to-end encryption|your security code|you created group|added you|left|removed|changed the group|changed their phone number|forwarded|this message was deleted|community admin|group admin|announcements|announcement)$/i;
+const WA_SYSTEM_LINE_RE = /^(?:\+?[\d][\d\s().\-]{4,}|available|dm|inbox|call|whatsapp|order now|book fast|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|joined using invite link|missed voice call|missed video call|end-to-end encryption|end-to-end encrypted|learn more|messages and calls|your security code|you created group|added you|left|removed|changed the group|changed their phone number|forwarded|this message was deleted|community admin|group admin|announcements|announcement)$/i;
 
 function splitWhatsAppMessages(chatText) {
   const lines = String(chatText || '').replace(/[\r\u202f\u200e\u200f\uFEFF]/g, ' ').split('\n');
