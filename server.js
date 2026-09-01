@@ -14,7 +14,7 @@ const multer = require('multer');
 const Razorpay = require('razorpay');
 const AdmZip = require('adm-zip');
 const Tesseract = require('tesseract.js');
-const { resolveImportWindowDays, calculateDuplicateScore, buildImportedProductGroups } = require('./importer-utils');
+const { resolveImportWindowDays, calculateDuplicateScore, buildImportedProductGroups, isMeaningfulTitleCandidate } = require('./importer-utils');
 const app = express();
 
 // ============================================================
@@ -490,12 +490,13 @@ async function parseWhatsAppCatalog(zipBuffer, originalFilename = '') {
 
   const products = [];
   const usedImageEntries = new Set();
-  const groupedMessages = [];
 
+  // -----------------------------------------------------------------------
+  // PASS 1: Build raw message list with matched images
+  // -----------------------------------------------------------------------
+  const rawMessages = [];
   for (const message of messages) {
-    if (message.timestamp && message.timestamp < cutoffDate) {
-      continue;
-    }
+    if (message.timestamp && message.timestamp < cutoffDate) continue;
 
     const rawText = String(message.text || '');
 
@@ -504,10 +505,8 @@ async function parseWhatsAppCatalog(zipBuffer, originalFilename = '') {
     // Format 2: IMG-20260819-WA0188.jpg (file attached)
     // Format 3: filename.jpg anywhere in text
     const attachmentMatches = [];
-
     const tagMatches = [...rawText.matchAll(/<attached:\s*([^>]+)>/gi)].map(m => m[1].trim());
     attachmentMatches.push(...tagMatches);
-
     const fileMatches = [...rawText.matchAll(/([a-zA-Z0-9_\-]+\.(?:jpe?g|png|webp|gif))/gi)].map(m => m[1].trim());
     attachmentMatches.push(...fileMatches);
 
@@ -520,8 +519,7 @@ async function parseWhatsAppCatalog(zipBuffer, originalFilename = '') {
       }
     }
 
-    // Fallback: If no explicit filename match was found, but message has media indicators
-    // or is blank/attachment line, assign next available image entry from the ZIP.
+    // Fallback: assign next available image if message has media hints
     if (!matchedImages.length && imageEntries.length > usedImageEntries.size) {
       const hasAttachmentHint = /<attached:|\(file attached\)|omitted|image|media|photo|picture|\.(?:jpe?g|png|webp|gif)/i.test(rawText) || !rawText.trim();
       if (hasAttachmentHint) {
@@ -541,14 +539,70 @@ async function parseWhatsAppCatalog(zipBuffer, originalFilename = '') {
       .filter(line => !/\(file attached\)/i.test(line))
       .filter(line => !/^<?\s*(?:media|image|video|audio|sticker|gif|file)\s+omitted\s*>?$/i.test(line));
     const caption = textLines.filter(Boolean).join('\n').trim();
-    const hasCaption = Boolean(caption);
 
-    groupedMessages.push({
+    // Determine if this message is purely an image/attachment (no real text)
+    const isImageOnly = matchedImages.length > 0 && !caption;
+    // Determine if this message has meaningful product text (title/description)
+    const hasProductText = caption && (
+      isMeaningfulTitleCandidate(caption.split('\n')[0]) ||
+      extractPriceValue(caption)
+    );
+
+    rawMessages.push({
       ...message,
       text: caption,
       images: matchedImages,
-      hasCaption,
-      hasImages: matchedImages.length > 0
+      isImageOnly,
+      hasProductText
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // PASS 2: Forward-merge orphaned image-only messages into the next text
+  // message. In WhatsApp groups, images are sent BEFORE the product text:
+  //   [IMG] [IMG] [IMG] [TEXT: 🔥 ONEPLUS BUDS 2R 🔥 PRICE: 400₹]
+  // So we collect consecutive image-only messages and attach them to the
+  // next message that has product text.
+  // -----------------------------------------------------------------------
+  const groupedMessages = [];
+  let pendingImages = [];
+
+  for (let i = 0; i < rawMessages.length; i++) {
+    const msg = rawMessages[i];
+
+    if (msg.isImageOnly) {
+      // Accumulate orphaned images
+      pendingImages.push(...msg.images);
+      continue;
+    }
+
+    // This message has text — attach any pending images to it
+    if (pendingImages.length > 0) {
+      msg.images = [...pendingImages, ...msg.images];
+      pendingImages = [];
+    }
+
+    groupedMessages.push({
+      ...msg,
+      hasCaption: Boolean(msg.text),
+      hasImages: msg.images.length > 0
+    });
+  }
+
+  // If there are trailing orphaned images with no following text, attach
+  // them to the last grouped message (if any) or create a standalone entry.
+  if (pendingImages.length > 0 && groupedMessages.length > 0) {
+    const lastMsg = groupedMessages[groupedMessages.length - 1];
+    lastMsg.images = [...lastMsg.images, ...pendingImages];
+    lastMsg.hasImages = true;
+  } else if (pendingImages.length > 0) {
+    groupedMessages.push({
+      text: '',
+      images: pendingImages,
+      attachments: [],
+      timestamp: null,
+      hasCaption: false,
+      hasImages: true
     });
   }
 

@@ -273,6 +273,7 @@ module.exports = {
   resolveImportWindowDays,
   calculateDuplicateScore,
   chooseMeaningfulTitle,
+  isMeaningfulTitleCandidate,
   buildImportedProductGroups,
   extractPriceValue
 };
