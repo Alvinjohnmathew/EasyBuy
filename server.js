@@ -275,7 +275,8 @@ function buildDescription(lines, title, priceLine) {
 }
 
 function parseWhatsAppTimestamp(line) {
-  const match = line.match(/^(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)\s*(?:-|–|—)/i);
+  // Support both standard "DD/MM/YYYY, HH:MM - " and iOS bracketed "[DD/MM/YYYY, HH:MM:SS] "
+  const match = line.match(/^(?:\[)?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)(?:\])?\s*(?:-|–|—|:)?/i);
   if (!match) return null;
 
   const datePart = match[1];
@@ -286,13 +287,12 @@ function parseWhatsAppTimestamp(line) {
   return Number.isNaN(parsed) ? null : new Date(parsed);
 }
 
-// Patterns that identify sender names / phone numbers at the start of a
-// WhatsApp message line (after the timestamp dash). We ONLY strip the sender
-// prefix — never the message body.
-const SENDER_PREFIX_RE = /^(\+?[\d][\d\s().\-]{2,}|[\w][^:]{0,59}):\s*/;
+// Strips sender prefixes from group chats, including tildes (~ Hananeyyy:),
+// phone numbers (+91 95442 99563:), community roles (Community admin:), etc.
+const SENDER_PREFIX_RE = /^(?:~?\s*[^:\n]{1,80}):\s*/;
 
 // WhatsApp system / noise lines that carry no product information.
-const WA_SYSTEM_LINE_RE = /^(?:\+?[\d][\d\s().\-]{4,}|available|dm|inbox|call|whatsapp|order now|book fast|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|joined using invite link|missed voice call|missed video call|end-to-end encryption|your security code|you created group|added you|left|removed|changed the group|changed their phone number|forwarded|this message was deleted)$/i;
+const WA_SYSTEM_LINE_RE = /^(?:\+?[\d][\d\s().\-]{4,}|available|dm|inbox|call|whatsapp|order now|book fast|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|joined using invite link|missed voice call|missed video call|end-to-end encryption|your security code|you created group|added you|left|removed|changed the group|changed their phone number|forwarded|this message was deleted|community admin|group admin)$/i;
 
 function splitWhatsAppMessages(chatText) {
   const lines = String(chatText || '').replace(/\r/g, '').split('\n');
@@ -301,21 +301,15 @@ function splitWhatsAppMessages(chatText) {
 
   for (const line of lines) {
     const timestamp = parseWhatsAppTimestamp(line);
-    // WhatsApp export format: "DD/MM/YYYY, HH:MM - Sender Name: message body"
-    // or:                     "DD/MM/YYYY, HH:MM - +91 73832 34749: message body"
-    const messageMatch = line.match(/^\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\s*(?:-|–|—)\s*(.+)$/i);
+    // Format 1: "19/08/2026, 05:53 - ~ Hananeyyy: message"
+    // Format 2: "[19/08/2026, 05:53:10] Sender: message"
+    const messageMatch = line.match(/^(?:\[)?\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?(?:\])?\s*(?:-|–|—)?\s*(.+)$/i);
     if (messageMatch) {
       if (current) messages.push(current);
 
       const rawAfterDash = messageMatch[1].trim();
-
-      // Strip sender prefix (phone number or display name).
-      // IMPORTANT: if stripping leaves nothing, we use '' — we never restore
-      // rawAfterDash because that would put the phone number back as product text.
       const stripped = rawAfterDash.replace(SENDER_PREFIX_RE, '').trim();
-      // Extra safety: if what remains still looks like a bare phone number,
-      // discard it entirely.
-      const bodyText = /^\+?[\d][\d\s().\-]{4,}:?$/.test(stripped) ? '' : stripped;
+      const bodyText = /^(?:~?\s*[\w\s+\-().]{1,60}:?|\+?[\d][\d\s().\-]{4,}:?)$/.test(stripped) ? '' : stripped;
 
       current = {
         text: bodyText,
@@ -327,9 +321,19 @@ function splitWhatsAppMessages(chatText) {
     }
 
     if (current) {
-      // Continuation lines (multi-line messages)
       current.text = `${current.text}\n${line}`.trim();
       current.raw = `${current.raw}\n${line}`;
+    } else if (line.trim()) {
+      // Handles un-timestamped copied text directly from WhatsApp Web / Desktop
+      const cleanLine = line.trim().replace(SENDER_PREFIX_RE, '').trim();
+      if (cleanLine) {
+        current = {
+          text: cleanLine,
+          attachments: [],
+          raw: line,
+          timestamp: null
+        };
+      }
     }
   }
 
@@ -450,14 +454,27 @@ async function extractProductDetails(group, index) {
   return product;
 }
 
-async function parseWhatsAppCatalog(zipBuffer) {
-  const zip = new AdmZip(zipBuffer);
-  const entries = zip.getEntries();
-  const textEntry = entries.find(entry => !entry.isDirectory && /\.txt$/i.test(entry.entryName));
-  if (!textEntry) throw new Error('No chat text file was found in this ZIP');
+function isZipBuffer(buffer) {
+  if (!buffer || buffer.length < 4) return false;
+  return buffer[0] === 0x50 && buffer[1] === 0x4b;
+}
 
-  const chatText = textEntry.getData().toString('utf8').replace(/^\uFEFF/, '');
-  const imageEntries = entries.filter(entry => !entry.isDirectory && /\.(jpe?g|png|webp|gif)$/i.test(entry.entryName));
+async function parseWhatsAppCatalog(zipBuffer, originalFilename = '') {
+  let chatText = '';
+  const entries = [];
+  const imageEntries = [];
+
+  if (String(originalFilename).toLowerCase().endsWith('.txt') || !isZipBuffer(zipBuffer)) {
+    chatText = zipBuffer.toString('utf8').replace(/^\uFEFF/, '');
+  } else {
+    const zip = new AdmZip(zipBuffer);
+    entries.push(...zip.getEntries());
+    const textEntry = entries.find(entry => !entry.isDirectory && /\.txt$/i.test(entry.entryName));
+    if (!textEntry) throw new Error('No chat text file was found in this ZIP file');
+    chatText = textEntry.getData().toString('utf8').replace(/^\uFEFF/, '');
+    imageEntries.push(...entries.filter(entry => !entry.isDirectory && /\.(jpe?g|png|webp|gif)$/i.test(entry.entryName)));
+  }
+
   const messages = splitWhatsAppMessages(chatText);
   const latestTimestamp = messages.reduce((latest, message) => {
     if (!message.timestamp) return latest;
@@ -1019,7 +1036,7 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req,
     if (!req.file) return res.status(400).json({ error: 'Please choose your WhatsApp ZIP file' });
 
     try {
-      const parsed = await parseWhatsAppCatalog(req.file.buffer);
+      const parsed = await parseWhatsAppCatalog(req.file.buffer, req.file.originalname);
       if (!parsed.products.length) {
         return res.status(400).json({ error: 'No products with a price or caption were found. Each product message should contain a caption and ideally a price such as “Price: ₹600”.' });
       }
@@ -1082,6 +1099,182 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req,
       res.status(400).json({ error: e.message || 'Could not read this ZIP. Export the WhatsApp chat again and choose “With Media”.' });
     }
   });
+});
+
+// Direct WhatsApp text paste + optional photo file uploads preview endpoint
+app.post('/api/admin/import-whatsapp-catalog/direct-preview', requireAdmin, upload.array('photos', 50), async (req, res) => {
+  try {
+    const chatText = String(req.body?.chatText || '').trim();
+    if (!chatText) {
+      return res.status(400).json({ error: 'Please paste your WhatsApp chat messages into the text box' });
+    }
+
+    const files = Array.isArray(req.files) ? req.files : [];
+    const imageEntries = files.map((file, idx) => ({
+      entryName: file.originalname || `photo_${idx + 1}.jpg`,
+      getData: () => file.buffer,
+      isDirectory: false
+    }));
+
+    const messages = splitWhatsAppMessages(chatText);
+    const groupedMessages = messages.map(msg => ({
+      ...msg,
+      images: [],
+      hasCaption: Boolean(msg.text),
+      hasImages: false
+    }));
+
+    const groups = buildImportedProductGroups(groupedMessages, imageEntries);
+    const parsedProducts = [];
+
+    for (const [index, group] of groups.entries()) {
+      const assignedImageEntries = imageEntries.slice(index * 2, (index + 1) * 2);
+      const product = await extractProductDetails({
+        caption: `${group.title}\n${group.description}`,
+        imageEntries: assignedImageEntries.length ? assignedImageEntries : imageEntries
+      }, index);
+
+      if (product.title && (product.description || product.price || imageEntries.length)) {
+        parsedProducts.push(product);
+      }
+    }
+
+    if (!parsedProducts.length) {
+      return res.status(400).json({ error: 'No product details found in the pasted text. Make sure product titles and prices are present.' });
+    }
+
+    const products = parsedProducts.map(product => {
+      const entryNames = Array.isArray(product.imageEntryNames) ? product.imageEntryNames : [];
+      const primaryName = entryNames[0] || product.imageName;
+      const primaryEntry = primaryName ? imageEntries.find(e => path.basename(e.entryName) === primaryName) : (imageEntries[0] || null);
+      const primaryImage = primaryEntry ? toDataUri(primaryEntry.getData(), primaryEntry.entryName) : null;
+
+      return {
+        ...product,
+        hasImage: Boolean(primaryImage),
+        imageUrl: primaryImage,
+        imageUrls: primaryImage ? [primaryImage] : [],
+        action: 'create',
+        isSelected: !product.needsReview
+      };
+    });
+
+    const token = crypto.randomUUID();
+    whatsappImportPreviews.set(token, { expiresAt: Date.now() + (30 * 60 * 1000), products, entries: imageEntries });
+
+    res.json({ token, products });
+  } catch (e) {
+    console.error('Direct WhatsApp preview failed:', e);
+    res.status(500).json({ error: e.message || 'Could not parse pasted WhatsApp text' });
+  }
+});
+
+// CSV / JSON / TXT bulk product import preview endpoint
+app.post('/api/admin/import-csv-catalog', requireAdmin, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Please choose a CSV, TXT, or JSON file' });
+    const content = req.file.buffer.toString('utf8').replace(/^\uFEFF/, '');
+    const filename = String(req.file.originalname || '').toLowerCase();
+
+    let items = [];
+    if (filename.endsWith('.json')) {
+      const parsed = JSON.parse(content);
+      items = Array.isArray(parsed) ? parsed : (parsed.products || []);
+    } else if (filename.endsWith('.txt')) {
+      const messages = splitWhatsAppMessages(content);
+      const groupedMessages = messages.map(msg => ({
+        ...msg,
+        images: [],
+        hasCaption: Boolean(msg.text),
+        hasImages: false
+      }));
+      const groups = buildImportedProductGroups(groupedMessages, []);
+      for (const [index, group] of groups.entries()) {
+        const product = await extractProductDetails({
+          caption: `${group.title}\n${group.description}`,
+          imageEntries: []
+        }, index);
+        if (product.title && (product.description || product.price)) {
+          items.push(product);
+        }
+      }
+    } else {
+      const lines = content.split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) throw new Error('CSV file must contain at least a header row and data rows');
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/^["']|["']$/g, ''));
+      
+      const allMessagesText = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
+        const row = {};
+        headers.forEach((h, idx) => { row[h] = cols[idx] || ''; });
+        
+        const messageText = row.message || row.messagetext || row.text || row.content || row.body;
+        if (messageText) {
+          allMessagesText.push(messageText);
+        }
+
+        if (row.title || row.name || row.product) {
+          items.push({
+            title: row.title || row.name || row.product,
+            price: Number(row.price || row.sellingprice || row.rate) || 0,
+            originalPrice: Number(row.mrp || row.originalprice || row.price) || 0,
+            category: row.category || 'Accessories',
+            description: row.description || row.desc || 'Imported product dataset',
+            image: row.image || row.imageurl || row.photo || ''
+          });
+        }
+      }
+
+      // If CSV exported WhatsApp messages (like WA Web Plus CSV export), parse messages text
+      if (!items.length && allMessagesText.length) {
+        const combinedText = allMessagesText.join('\n');
+        const messages = splitWhatsAppMessages(combinedText);
+        const groupedMessages = messages.map(msg => ({
+          ...msg,
+          images: [],
+          hasCaption: Boolean(msg.text),
+          hasImages: false
+        }));
+        const groups = buildImportedProductGroups(groupedMessages, []);
+        for (const [index, group] of groups.entries()) {
+          const product = await extractProductDetails({
+            caption: `${group.title}\n${group.description}`,
+            imageEntries: []
+          }, index);
+          if (product.title && (product.description || product.price)) {
+            items.push(product);
+          }
+        }
+      }
+    }
+
+    if (!items.length) return res.status(400).json({ error: 'No valid products found in CSV/JSON/TXT file' });
+
+    const products = items.map((item, index) => ({
+      previewId: crypto.randomUUID(),
+      title: String(item.title || `Product ${index + 1}`).slice(0, 220),
+      price: Number(item.price) || 0,
+      originalPrice: Number(item.originalPrice || item.mrp || item.price) || 0,
+      category: item.category || 'Accessories',
+      subcategory: item.subcategory || '',
+      description: item.description || 'Imported product dataset',
+      imageUrl: item.image || item.imageUrl || null,
+      imageUrls: item.image ? [item.image] : [],
+      hasImage: Boolean(item.image),
+      action: 'create',
+      isSelected: true
+    }));
+
+    const token = crypto.randomUUID();
+    whatsappImportPreviews.set(token, { expiresAt: Date.now() + (30 * 60 * 1000), products, entries: [] });
+
+    res.json({ token, products });
+  } catch (e) {
+    console.error('CSV import failed:', e);
+    res.status(400).json({ error: e.message || 'Could not parse CSV/JSON/TXT file' });
+  }
 });
 
 // Commit selected products from a previously created preview. The data is read
@@ -1546,8 +1739,9 @@ const catalogUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 1024 * 1024 * 1024 }, // 1GB (1024MB)
   fileFilter: (req, file, cb) => {
-    if (!String(file.originalname || '').toLowerCase().endsWith('.zip')) {
-      return cb(new Error('Please select a WhatsApp chat ZIP file'));
+    const fname = String(file.originalname || '').toLowerCase();
+    if (!fname.endsWith('.zip') && !fname.endsWith('.txt')) {
+      return cb(new Error('Please select a WhatsApp chat ZIP or TXT file'));
     }
     cb(null, true);
   }

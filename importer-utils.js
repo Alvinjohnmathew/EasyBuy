@@ -57,8 +57,10 @@ function isMeaningfulTitleCandidate(value) {
   if (!line) return false;
   // Phone numbers: +91 73832 34749, 07383234749, +91 73832 34749: etc.
   if (/^\+?[\d][\d\s().\-]{4,}:?$/.test(line)) return false;
-  // System/junk lines — keep in sync with server.js WA_SYSTEM_LINE_RE
-  if (/^<?\s*(?:available|dm|inbox|call|whatsapp|order now|book fast|missed voice|missed video|joined using invite link|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|file omitted|end-to-end encryption|this message was deleted|forwarded)\s*>?$/i.test(line)) return false;
+  // System/junk lines & sender headers — keep in sync with server.js WA_SYSTEM_LINE_RE
+  if (/^<?\s*(?:available|dm|inbox|call|whatsapp|order now|book fast|missed voice|missed video|joined using invite link|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|file omitted|end-to-end encryption|this message was deleted|forwarded|community admin|group admin|admin)\s*>?$/i.test(line)) return false;
+  // Sender metadata lines (e.g. ~ Hananeyyy +91 95442 99563)
+  if (/^~\s*[\w\s+\-().]{1,60}:?$/i.test(line)) return false;
   // Filenames & attachment strings
   if (/^(?:<attached:[^>]+>|.*\(file attached\)|[a-zA-Z0-9_\-]+\.(?:jpe?g|png|webp|gif|opus|mp4|pdf|apk|doc|docx))$/i.test(line)) return false;
   if (/\.(?:jpe?g|png|webp|gif)$/i.test(line)) return false;
@@ -70,7 +72,7 @@ function isMeaningfulTitleCandidate(value) {
   if (/^(?:₹|rs\.?|inr)\s*[0-9,]+/i.test(line)) return false;
   if (/^price\s*:?\s*/.test(line) && /[0-9]/.test(line)) return false;
   const hasLetters = /[a-zA-Z]/.test(line);
-  const hasProductWords = /(?:mobile|phone|watch|earbud|headphone|speaker|power\s*bank|powerbank|shirt|shoe|dress|bag|bags|neckband|charger|camera|laptop|tablet|mug|gift|beauty|cream|serum|fan|lamp|keyboard|mouse|monitor|sandal|jacket|hoodie|kurti|saree|jeans|pant|trouser|top|blouse|lehenga|wallet|toy|teddy|bottle|drone|tws|airpod|airpods|buds|gadget)/i.test(line);
+  const hasProductWords = /(?:marshall|mobile|phone|watch|earbud|earbuds|headphone|speaker|power\s*bank|powerbank|shirt|shoe|dress|bag|bags|neckband|charger|camera|laptop|tablet|mug|gift|beauty|cream|serum|fan|lamp|keyboard|mouse|monitor|sandal|jacket|hoodie|kurti|saree|jeans|pant|trouser|top|blouse|lehenga|wallet|toy|teddy|bottle|drone|tws|airpod|airpods|pods|buds|gadget)/i.test(line);
   return hasLetters && (hasProductWords || line.split(/\s+/).length >= 2);
 }
 
@@ -80,7 +82,9 @@ function chooseMeaningfulTitle(lines, fallback = 'WhatsApp product') {
     const trimmed = String(line || '').trim();
     if (!trimmed) continue;
     const cleaned = trimmed
-      .replace(/^(?:⭐|✨|🔷|📦|📱|🎧|👟|👕|🛍️|💄|🛒|🔥|📷|⚡|👇|🌟|💥|🔥|✅|➡️)\s*/gu, '')
+      .replace(/^~\s*[\w\s+\-().]{1,60}:?\s*/i, '')
+      .replace(/^(?:Community admin|Group admin|Admin|Seller)\s*:?\s*/i, '')
+      .replace(/^(?:⭐|✨|🔷|📦|📱|🎧|👟|👕|🛍️|💄|🛒|🔥|📷|⚡|👇|🌟|💥|🔥|✅|➡️|🌀)\s*/gu, '')
       .replace(/^(?:new|latest|product|item)\s+/i, '')
       .trim();
     if (isMeaningfulTitleCandidate(cleaned)) return cleaned.slice(0, 220);

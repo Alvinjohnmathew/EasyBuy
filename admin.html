@@ -248,23 +248,58 @@
     <div class="modal-container admin-product-modal">
       <button class="close-modal-btn" id="close-whatsapp-import-btn"><i class="fa-solid fa-xmark"></i></button>
       <div class="admin-modal-header">
-        <h3><i class="fa-brands fa-whatsapp"></i> Import WhatsApp Catalog</h3>
-        <p>Export your WhatsApp group <strong>with media</strong>, choose the ZIP here, then review the detected products before importing.</p>
+        <h3><i class="fa-brands fa-whatsapp"></i> Bulk Product Importer</h3>
+        <p>Import large product datasets directly from WhatsApp group chat ZIPs, copied chat text, or CSV/JSON spreadsheets.</p>
       </div>
-      <div class="form-group">
-        <label for="whatsapp-catalog-file">WhatsApp Chat ZIP</label>
-        <input type="file" id="whatsapp-catalog-file" accept=".zip,application/zip">
-        <span class="input-helper">The ZIP should include the exported chat text and product images. Maximum file size: 1GB (1024MB).</span>
+
+      <div class="import-mode-tabs" style="display:flex; gap:8px; margin-bottom:16px; border-bottom:1px solid var(--border-color, #e0e0e0); padding-bottom:10px;">
+        <button type="button" class="secondary-btn small-btn active" id="import-mode-zip-tab"><i class="fa-solid fa-file-zipper"></i> WhatsApp ZIP</button>
+        <button type="button" class="secondary-btn small-btn" id="import-mode-paste-tab"><i class="fa-solid fa-paste"></i> Paste Text & Photos</button>
+        <button type="button" class="secondary-btn small-btn" id="import-mode-csv-tab"><i class="fa-solid fa-file-csv"></i> CSV / JSON Upload</button>
       </div>
-      <div class="form-group">
-        <label for="whatsapp-import-window-days">Import recent messages from the last</label>
-        <select id="whatsapp-import-window-days">
-          <option value="7">7 days</option>
-          <option value="30" selected>30 days</option>
-          <option value="60">60 days</option>
-          <option value="90">90 days</option>
-        </select>
+
+      <!-- Mode 1: ZIP / TXT Upload -->
+      <div id="import-mode-zip-section">
+        <div class="form-group">
+          <label for="whatsapp-catalog-file">WhatsApp Chat Export (ZIP or TXT)</label>
+          <input type="file" id="whatsapp-catalog-file" accept=".zip,.txt,application/zip,text/plain">
+          <span class="input-helper">Select your exported WhatsApp chat file (.zip or .txt file).</span>
+        </div>
+        <div class="form-group">
+          <label for="whatsapp-import-window-days">Import recent messages from the last</label>
+          <select id="whatsapp-import-window-days">
+            <option value="7">7 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="60">60 days</option>
+            <option value="90">90 days</option>
+            <option value="365">All messages (1 year)</option>
+          </select>
+        </div>
       </div>
+
+      <!-- Mode 2: Direct Text & Photos Paste -->
+      <div id="import-mode-paste-section" class="hidden">
+        <div class="form-group">
+          <label for="whatsapp-paste-text">Paste WhatsApp Group Chat Messages</label>
+          <textarea id="whatsapp-paste-text" rows="5" style="width:100%; padding:10px; font-family:inherit;" placeholder="Paste messages copied directly from WhatsApp Web or Mobile chat here...&#10;&#10;Example:&#10;MARSHALL MODE 2 EARBUDS 🌀&#10;• High Quality 1·1 Appearance&#10;Price: ₹1299&#10;MRP: ₹2499"></textarea>
+          <span class="input-helper">Copy text from WhatsApp group chat and paste it above.</span>
+        </div>
+        <div class="form-group">
+          <label for="whatsapp-paste-photos">Product Photos (Optional)</label>
+          <input type="file" id="whatsapp-paste-photos" accept="image/*" multiple>
+          <span class="input-helper">Select or drag photo(s) from your computer or phone to attach.</span>
+        </div>
+      </div>
+
+      <!-- Mode 3: Bulk CSV/TXT/JSON -->
+      <div id="import-mode-csv-section" class="hidden">
+        <div class="form-group">
+          <label for="csv-catalog-file">CSV, TXT, or JSON File</label>
+          <input type="file" id="csv-catalog-file" accept=".csv,.json,.txt,text/plain,text/csv,application/json">
+          <span class="input-helper">Upload a CSV spreadsheet, TXT exported text file, or JSON file.</span>
+        </div>
+      </div>
+
       <div id="whatsapp-import-preview" class="whatsapp-import-preview" aria-live="polite"></div>
       <div class="admin-modal-actions">
         <button type="button" class="secondary-btn" id="cancel-whatsapp-import-btn">Cancel</button>

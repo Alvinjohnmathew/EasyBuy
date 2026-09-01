@@ -242,6 +242,9 @@ function initWhatsAppImport() {
   const openBtn = document.getElementById('admin-import-whatsapp-btn');
   const overlay = document.getElementById('whatsapp-import-modal-overlay');
   const fileInput = document.getElementById('whatsapp-catalog-file');
+  const pasteTextInput = document.getElementById('whatsapp-paste-text');
+  const pastePhotosInput = document.getElementById('whatsapp-paste-photos');
+  const csvFileInput = document.getElementById('csv-catalog-file');
   const previewContainer = document.getElementById('whatsapp-import-preview');
   const windowSelect = document.getElementById('whatsapp-import-window-days');
   const previewBtn = document.getElementById('preview-whatsapp-import-btn');
@@ -249,17 +252,45 @@ function initWhatsAppImport() {
   const closeBtn = document.getElementById('close-whatsapp-import-btn');
   const cancelBtn = document.getElementById('cancel-whatsapp-import-btn');
 
+  const zipTab = document.getElementById('import-mode-zip-tab');
+  const pasteTab = document.getElementById('import-mode-paste-tab');
+  const csvTab = document.getElementById('import-mode-csv-tab');
+
+  const zipSection = document.getElementById('import-mode-zip-section');
+  const pasteSection = document.getElementById('import-mode-paste-section');
+  const csvSection = document.getElementById('import-mode-csv-section');
+
   if (!openBtn || !overlay) return;
 
+  let currentMode = 'zip'; // 'zip' | 'paste' | 'csv'
   let currentToken = null;
   let currentProducts = [];
+
+  function switchMode(mode) {
+    currentMode = mode;
+    zipTab?.classList.toggle('active', mode === 'zip');
+    pasteTab?.classList.toggle('active', mode === 'paste');
+    csvTab?.classList.toggle('active', mode === 'csv');
+
+    zipSection?.classList.toggle('hidden', mode !== 'zip');
+    pasteSection?.classList.toggle('hidden', mode !== 'paste');
+    csvSection?.classList.toggle('hidden', mode !== 'csv');
+  }
+
+  zipTab?.addEventListener('click', () => switchMode('zip'));
+  pasteTab?.addEventListener('click', () => switchMode('paste'));
+  csvTab?.addEventListener('click', () => switchMode('csv'));
 
   function resetModal() {
     currentToken = null;
     currentProducts = [];
     if (fileInput) fileInput.value = '';
+    if (pasteTextInput) pasteTextInput.value = '';
+    if (pastePhotosInput) pastePhotosInput.value = '';
+    if (csvFileInput) csvFileInput.value = '';
     if (previewContainer) previewContainer.innerHTML = '';
     if (commitBtn) commitBtn.disabled = true;
+    switchMode('zip');
   }
 
   openBtn.addEventListener('click', () => {
@@ -275,30 +306,69 @@ function initWhatsAppImport() {
   });
 
   previewBtn?.addEventListener('click', async () => {
-    const file = fileInput?.files?.[0];
-    if (!file) {
-      showToast('Please choose your WhatsApp chat ZIP file first', 'error');
-      return;
-    }
-
     previewBtn.disabled = true;
-    previewContainer.innerHTML = '<p class="input-helper">Reading your WhatsApp export…</p>';
-
-    const formData = new FormData();
-    formData.append('catalog', file);
-    formData.append('importWindowDays', windowSelect?.value || '30');
+    previewContainer.innerHTML = '<p class="input-helper">Processing your dataset…</p>';
 
     try {
-      const res = await fetch('/api/admin/import-whatsapp-catalog/preview', {
-        method: 'POST',
-        credentials: 'include',
-        body: formData
-      });
-      const data = await res.json();
+      let res, data;
+      if (currentMode === 'zip') {
+        const file = fileInput?.files?.[0];
+        if (!file) {
+          showToast('Please choose your WhatsApp chat ZIP file first', 'error');
+          previewContainer.innerHTML = '';
+          previewBtn.disabled = false;
+          return;
+        }
+        const formData = new FormData();
+        formData.append('catalog', file);
+        formData.append('importWindowDays', windowSelect?.value || '30');
+
+        res = await fetch('/api/admin/import-whatsapp-catalog/preview', {
+          method: 'POST',
+          credentials: 'include',
+          body: formData
+        });
+      } else if (currentMode === 'paste') {
+        const text = pasteTextInput?.value?.trim();
+        if (!text) {
+          showToast('Please paste your WhatsApp chat text into the box first', 'error');
+          previewContainer.innerHTML = '';
+          previewBtn.disabled = false;
+          return;
+        }
+        const formData = new FormData();
+        formData.append('chatText', text);
+        const photos = Array.from(pastePhotosInput?.files || []);
+        photos.forEach(photo => formData.append('photos', photo));
+
+        res = await fetch('/api/admin/import-whatsapp-catalog/direct-preview', {
+          method: 'POST',
+          credentials: 'include',
+          body: formData
+        });
+      } else if (currentMode === 'csv') {
+        const file = csvFileInput?.files?.[0];
+        if (!file) {
+          showToast('Please choose a CSV or JSON file first', 'error');
+          previewContainer.innerHTML = '';
+          previewBtn.disabled = false;
+          return;
+        }
+        const formData = new FormData();
+        formData.append('file', file);
+
+        res = await fetch('/api/admin/import-csv-catalog', {
+          method: 'POST',
+          credentials: 'include',
+          body: formData
+        });
+      }
+
+      data = await res.json();
 
       if (!res.ok) {
         previewContainer.innerHTML = '';
-        showToast(data.error || 'Could not read this ZIP', 'error');
+        showToast(data.error || 'Could not parse dataset', 'error');
         return;
       }
 
@@ -311,7 +381,7 @@ function initWhatsAppImport() {
       renderWhatsAppPreview();
       commitBtn.disabled = currentProducts.length === 0;
     } catch (e) {
-      console.error('WhatsApp upload error:', e);
+      console.error('Import upload error:', e);
       previewContainer.innerHTML = '';
       showToast(e.message || 'Upload failed. Please check your connection.', 'error');
     } finally {
