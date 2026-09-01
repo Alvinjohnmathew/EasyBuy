@@ -275,15 +275,15 @@ function buildDescription(lines, title, priceLine) {
 }
 
 function parseWhatsAppTimestamp(line) {
-  // Support both standard "DD/MM/YYYY, HH:MM - " and iOS bracketed "[DD/MM/YYYY, HH:MM:SS] "
-  const match = line.match(/^(?:\[)?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)(?:\])?\s*(?:-|–|—|:)?/i);
+  const cleanLine = String(line || '').replace(/[\u202f\u200e\u200f\uFEFF]/g, ' ');
+  const match = cleanLine.match(/^(?:\[)?(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)(?:\])?\s*(?:-|–|—|:)?/i);
   if (!match) return null;
 
-  const datePart = match[1];
-  const timePart = match[2];
-  const normalizedDate = datePart.replace(/\./g, '/');
+  let [_, d, m, y, timePart] = match;
+  if (y.length === 2) y = '20' + y;
+  const normalizedDate = y + '/' + m + '/' + d;
   const normalizedTime = timePart.trim().toUpperCase();
-  const parsed = Date.parse(`${normalizedDate} ${normalizedTime}`);
+  const parsed = Date.parse(normalizedDate + ' ' + normalizedTime);
   return Number.isNaN(parsed) ? null : new Date(parsed);
 }
 
@@ -295,7 +295,7 @@ const SENDER_PREFIX_RE = /^(?:~?\s*[^:\n]{1,80}):\s*/;
 const WA_SYSTEM_LINE_RE = /^(?:\+?[\d][\d\s().\-]{4,}|available|dm|inbox|call|whatsapp|order now|book fast|messages deleted|media omitted|image omitted|video omitted|audio omitted|sticker omitted|gif omitted|joined using invite link|missed voice call|missed video call|end-to-end encryption|your security code|you created group|added you|left|removed|changed the group|changed their phone number|forwarded|this message was deleted|community admin|group admin|announcements|announcement)$/i;
 
 function splitWhatsAppMessages(chatText) {
-  const lines = String(chatText || '').replace(/\r/g, '').split('\n');
+  const lines = String(chatText || '').replace(/[\r\u202f\u200e\u200f\uFEFF]/g, ' ').split('\n');
   const messages = [];
   let current = null;
 
