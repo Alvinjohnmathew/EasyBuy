@@ -589,21 +589,15 @@ async function parseWhatsAppCatalog(zipBuffer, originalFilename = '') {
     });
   }
 
-  // If there are trailing orphaned images with no following text, attach
-  // them to the last grouped message (if any) or create a standalone entry.
-  if (pendingImages.length > 0 && groupedMessages.length > 0) {
-    const lastMsg = groupedMessages[groupedMessages.length - 1];
-    lastMsg.images = [...lastMsg.images, ...pendingImages];
-    lastMsg.hasImages = true;
-  } else if (pendingImages.length > 0) {
-    groupedMessages.push({
-      text: '',
-      images: pendingImages,
-      attachments: [],
-      timestamp: null,
-      hasCaption: false,
-      hasImages: true
-    });
+  // If there are trailing orphaned images with no following text, IGNORE
+  // them rather than attaching to the previous product. This avoids the
+  // common mis-association where unrelated photos become part of the last
+  // product. Images that cannot be matched to any following product-text
+  // are skipped; optionally log for diagnostics.
+  if (pendingImages.length > 0) {
+    console.log('Ignoring trailing orphan images in WhatsApp import:', pendingImages.map(e => path.basename(e.entryName)));
+    // Do not attach or create standalone groupedMessages for orphan images.
+    pendingImages = [];
   }
 
   const groups = buildImportedProductGroups(groupedMessages, imageEntries);
