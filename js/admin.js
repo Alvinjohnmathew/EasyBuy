@@ -434,7 +434,8 @@ function initWhatsAppImport() {
                 ${p.needsReview ? '<span class="wa-review-tag">Needs Manual Review</span>' : ''}
                 ${p.duplicateMatch ? `<span class="wa-review-tag">Duplicate match: ${escapeHtml(p.duplicateMatch.title || p.duplicateMatch.id)}</span>` : ''}
               </div>
-              ${p.imageUrl ? `<div class="wa-preview-image"><img src="${p.imageUrl}" alt="${escapeHtml(p.title || 'product')}"></div>` : ''}
+              ${Array.isArray(p.imageUrls) && p.imageUrls.length ? `<div class="wa-preview-images">${p.imageUrls.map((imageUrl, imageIndex) => `<img src="${imageUrl}" alt="${escapeHtml(p.title || 'product')} image ${imageIndex + 1}">`).join('')}</div>` : ''}
+              ${p.imageReview ? `<p class="wa-review-tag">${escapeHtml(p.imageReview)}</p>` : ''}
               <p class="wa-preview-description">${escapeHtml(p.description || '')}</p>
             </div>
           </div>

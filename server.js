@@ -262,6 +262,53 @@ async function extractTextFromImage(entry) {
   return '';
 }
 
+async function verifyProductImages(product, imageEntries) {
+  if (!imageEntries.length) {
+    return product;
+  }
+
+  const imageContent = imageEntries.slice(0, 6).map(entry => entry.getData().toString('base64'));
+  const prompt = `Verify whether these ecommerce product images match the text. Return JSON only: {"matched":true|false,"confidence":0 to 1,"correctedTitle":"","correctedDescription":""}. Do not invent details.\nTitle: ${product.title}\nDescription: ${product.description}`;
+
+  try {
+    let result = null;
+    const ollamaUrl = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
+    const ollamaModel = process.env.OLLAMA_VISION_MODEL || 'llama3.2-vision';
+    try {
+      const response = await axios.post(`${ollamaUrl}/api/chat`, {
+        model: ollamaModel,
+        stream: false,
+        format: 'json',
+        messages: [{ role: 'user', content: prompt, images: imageContent }]
+      }, { timeout: 2000 });
+      result = JSON.parse(response.data?.message?.content || '{}');
+    } catch (ollamaError) {
+      if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.length <= 10) throw ollamaError;
+      const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+        model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        temperature: 0,
+        messages: [{ role: 'system', content: 'Return JSON only with matched, confidence, correctedTitle, and correctedDescription. Do not invent details.' }, {
+          role: 'user',
+          content: [{ type: 'text', text: prompt }, ...imageContent.map((image, index) => ({ type: 'image_url', image_url: { url: toDataUri(imageEntries[index].getData(), imageEntries[index].entryName), detail: 'low' } }))]
+        }],
+        response_format: { type: 'json_object' }
+      }, { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, timeout: 30000 });
+      result = JSON.parse(response.data?.choices?.[0]?.message?.content || '{}');
+    }
+    const confidence = Number(result.confidence);
+    if (result.matched === false && confidence >= 0.75) {
+      product.needsReview = true;
+      product.isSelected = false;
+      product.imageReview = 'AI could not verify that the images match the description';
+    }
+    if (result.correctedTitle && confidence >= 0.75) product.title = String(result.correctedTitle).slice(0, 220);
+    if (result.correctedDescription && confidence >= 0.75) product.description = String(result.correctedDescription).slice(0, 1800);
+  } catch (error) {
+    console.warn('Optional image verification skipped:', error.message);
+  }
+  return product;
+}
+
 function buildDescription(lines, title, priceLine) {
   const filtered = (lines || [])
     .map(cleanWhatsAppLine)
@@ -367,6 +414,28 @@ function findMatchingImageEntry(entry, attachedName) {
   const target = normalizeAttachmentName(attachedName);
   const sourceName = normalizeAttachmentName(path.basename(entry.entryName));
   return sourceName === target || sourceName.includes(target) || target.includes(sourceName);
+}
+
+function resolveImageEntries(imageNames, entries) {
+  const availableEntries = Array.isArray(entries) ? entries : [];
+  const usedEntries = new Set();
+  const resolved = [];
+
+  for (const imageName of Array.isArray(imageNames) ? imageNames : []) {
+    const target = normalizeAttachmentName(path.basename(String(imageName || '')));
+    if (!target) continue;
+    const entry = availableEntries.find(candidate => {
+      if (candidate.isDirectory || usedEntries.has(candidate)) return false;
+      const source = normalizeAttachmentName(path.basename(candidate.entryName));
+      return source === target;
+    });
+    if (entry) {
+      usedEntries.add(entry);
+      resolved.push(entry);
+    }
+  }
+
+  return resolved;
 }
 
 async function extractProductDetails(group, index) {
@@ -602,11 +671,12 @@ async function parseWhatsAppCatalog(zipBuffer, originalFilename = '') {
 
   const groups = buildImportedProductGroups(groupedMessages, imageEntries);
   for (const [index, group] of groups.entries()) {
-    const imageEntriesForGroup = Array.isArray(group.images) ? group.images : [];
+    const imageEntriesForGroup = resolveImageEntries(group.images, imageEntries);
     const product = await extractProductDetails({
       caption: `${group.title}\n${group.description}`,
       imageEntries: imageEntriesForGroup
     }, index);
+    await verifyProductImages(product, imageEntriesForGroup);
 
     if (product.title && ((product.imageEntryNames && product.imageEntryNames.length) || product.description || product.price)) {
       products.push(product);
@@ -1100,9 +1170,12 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req,
       const existingProducts = await Product.find({ createdAt: { $gte: cutoffDate } }, { _id: 0, __v: 0 }).lean();
       const products = parsed.products.map(product => {
         const entryNames = Array.isArray(product.imageEntryNames) ? product.imageEntryNames : [];
-        const primaryName = entryNames[0] || product.imageName;
-        const primaryEntry = primaryName ? parsed.entries.find(e => !e.isDirectory && path.basename(e.entryName) === primaryName) : null;
-        const primaryImage = primaryEntry ? toDataUri(primaryEntry.getData(), primaryEntry.entryName) : null;
+        const imageEntriesForProduct = resolveImageEntries(entryNames, parsed.entries);
+        const imageUrls = imageEntriesForProduct
+          .slice(0, 6)
+          .map(entry => toDataUri(entry.getData(), entry.entryName))
+          .filter(Boolean);
+        const primaryImage = imageUrls[0] || null;
 
         const bestMatch = existingProducts
           .map(existing => {
@@ -1134,7 +1207,7 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req,
           ...product,
           hasImage: Boolean(primaryImage || entryNames.length > 0),
           imageUrl: primaryImage,
-          imageUrls: primaryImage ? [primaryImage] : [],
+          imageUrls,
           duplicateMatch: bestMatch ? { id: bestMatch.id, title: bestMatch.title, score: bestMatch.score } : null,
           action: bestMatch ? 'update' : 'create',
           isSelected: !product.needsReview,

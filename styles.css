@@ -2524,6 +2524,21 @@ a {
   display: block;
 }
 
+.wa-preview-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.wa-preview-images img {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  display: block;
+}
+
 .wa-preview-description {
   margin: 0;
   font-size: 13px;
