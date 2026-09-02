@@ -422,12 +422,15 @@ function resolveImageEntries(imageNames, entries) {
   const resolved = [];
 
   for (const imageName of Array.isArray(imageNames) ? imageNames : []) {
-    const target = normalizeAttachmentName(path.basename(String(imageName || '')));
+    const targetValue = typeof imageName === 'object' && imageName
+      ? imageName.entryName
+      : imageName;
+    const target = normalizeAttachmentName(path.basename(String(targetValue || '')));
     if (!target) continue;
     const entry = availableEntries.find(candidate => {
       if (candidate.isDirectory || usedEntries.has(candidate)) return false;
       const source = normalizeAttachmentName(path.basename(candidate.entryName));
-      return source === target;
+      return source === target || source.includes(target) || target.includes(source);
     });
     if (entry) {
       usedEntries.add(entry);
