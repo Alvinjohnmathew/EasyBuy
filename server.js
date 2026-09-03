@@ -68,6 +68,18 @@ const upload = multer({
   }
 });
 
+const catalogUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 1024 * 1024 * 1024 }, // 1GB (1024MB)
+  fileFilter: (req, file, cb) => {
+    const fname = String(file.originalname || '').toLowerCase();
+    if (!fname.endsWith('.zip') && !fname.endsWith('.txt')) {
+      return cb(new Error('Please select a WhatsApp chat ZIP or TXT file'));
+    }
+    cb(null, true);
+  }
+});
+
 // ============================================================
 // MongoDB models (Mongoose)
 // ============================================================
@@ -1862,16 +1874,4 @@ async function start() {
 start().catch(err => {
   console.error('\n[FATAL] Failed to start server:', err.message);
   process.exit(1);
-});
-
-const catalogUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 1024 * 1024 * 1024 }, // 1GB (1024MB)
-  fileFilter: (req, file, cb) => {
-    const fname = String(file.originalname || '').toLowerCase();
-    if (!fname.endsWith('.zip') && !fname.endsWith('.txt')) {
-      return cb(new Error('Please select a WhatsApp chat ZIP or TXT file'));
-    }
-    cb(null, true);
-  }
 });
