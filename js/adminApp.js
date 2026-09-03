@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { updateUI, renderAdminDashboard, openAdminProductModal, showToast } from './render.js';
-import { initAdminEvents } from './admin.js';
+import { initAdminEvents } from './admin.js?v=20260903';
 
 const loginView = document.getElementById('admin-login-view');
 const dashboardView = document.getElementById('admin-view');

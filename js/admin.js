@@ -373,7 +373,10 @@ function initWhatsAppImport() {
 
       if (!res.ok) {
         previewContainer.innerHTML = '';
-        showToast(data.error || `Preview failed (HTTP ${res.status})`, 'error');
+        const message = res.status === 401 || res.status === 403
+          ? 'Your admin session expired. Please sign in again and retry.'
+          : (data.error || `Preview failed (HTTP ${res.status})`);
+        showToast(message, 'error');
         return;
       }
 
