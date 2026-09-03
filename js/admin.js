@@ -364,11 +364,16 @@ function initWhatsAppImport() {
         });
       }
 
-      data = await res.json();
+      const responseText = await res.text();
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        throw new Error(`Preview server returned HTTP ${res.status} instead of JSON`);
+      }
 
       if (!res.ok) {
         previewContainer.innerHTML = '';
-        showToast(data.error || 'Could not parse dataset', 'error');
+        showToast(data.error || `Preview failed (HTTP ${res.status})`, 'error');
         return;
       }
 

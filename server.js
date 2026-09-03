@@ -1237,7 +1237,11 @@ app.post('/api/admin/import-whatsapp-catalog/preview', requireAdmin, async (req,
       res.json({ token, products, importWindowDays });
     } catch (e) {
       console.error('WhatsApp catalog preview failed:', e);
-      res.status(400).json({ error: e.message || 'Could not read this ZIP. Export the WhatsApp chat again and choose “With Media”.' });
+      if (!res.headersSent) {
+        res.status(400).json({
+          error: e.message || 'Could not read this ZIP. Export the WhatsApp chat again and choose "With Media".'
+        });
+      }
     }
   });
 });
