@@ -275,7 +275,7 @@ async function extractTextFromImage(entry) {
 }
 
 async function verifyProductImages(product, imageEntries) {
-  if (!imageEntries.length) {
+  if (process.env.OLLAMA_ENABLED !== 'true' || !imageEntries.length) {
     return product;
   }
 
